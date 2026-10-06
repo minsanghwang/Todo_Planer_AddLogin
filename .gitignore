@@ -1,0 +1,11 @@
+# 비밀값·로컬 데이터는 Git에 올리지 않는다
+.env
+.env.*
+*.sqlite3
+db.sqlite3
+__pycache__/
+*.pyc
+staticfiles/
+.venv/
+venv/
+evidence/*.raw

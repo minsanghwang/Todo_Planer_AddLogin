@@ -1,0 +1,13 @@
+{% extends "diary/base.html" %}
+{% load static %}
+{% block title %}다이어리 · 플랜두씨 다이어리 2{% endblock %}
+{% block body %}
+<div class="wrap">
+  <header class="topbar">
+    <div><strong>플랜두씨 다이어리</strong> <span class="muted">· {{ username }} 님의 기록 (나만 볼 수 있음)</span></div>
+    <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="btn secondary small" type="submit">로그아웃</button></form>
+  </header>
+  <div id="app"><div class="empty">불러오는 중...</div></div>
+</div>
+<script src="{% static 'diary/app.js' %}"></script>
+{% endblock %}

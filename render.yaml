@@ -1,0 +1,22 @@
+# Render 배포 설정. 비밀키는 이 파일에 없다: Render가 배포할 때 무작위로 만들어 환경변수로만 넣어 준다.
+# (무료 플랜의 조건·기간은 자주 바뀌므로 배포 전에 Render 안내를 확인하세요.)
+databases:
+  - name: diary2-db
+    plan: free
+    databaseName: diary2
+    user: diary2
+
+services:
+  - type: web
+    name: plandoo-diary2
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --no-input && python manage.py migrate
+    startCommand: gunicorn config.wsgi:application
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: diary2-db
+          property: connectionString
