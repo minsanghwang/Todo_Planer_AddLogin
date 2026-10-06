@@ -37,6 +37,17 @@ python3 scripts/verify_ui.py              # 실제 브라우저(Chromium, playwr
 4. 배포가 끝나면 시크릿 창에서 주소를 열어 로그인 화면이 뜨는지 확인한다.
 5. Python 버전 오류가 나면 Render 서비스 환경변수 `PYTHON_VERSION`을 3.12 이상으로 지정한다(Django 6.1 요구).
 
+## 배포 (Vercel)
+
+Vercel은 파일 저장이 안 되는 서버리스라서 **SQLite를 쓸 수 없고, 바깥 PostgreSQL이 꼭 필요**합니다(Vercel Storage의 Neon, Supabase 등).
+
+1. Vercel에서 *Add New → Project* 로 이 저장소를 가져온다. 프레임워크는 Django로 자동 인식된다(`pyproject.toml`의 `[tool.vercel]`).
+2. *Settings → Environment Variables* 에 아래 두 개를 **직접** 넣는다(채팅·Git에 쓰지 않는다).
+   - `DJANGO_SECRET_KEY` : `python3 -c "import secrets;print(secrets.token_urlsafe(50))"` 로 만든 값
+   - `DATABASE_URL` : PostgreSQL 주소
+3. 표 만들기(마이그레이션)는 자동으로 돌지 않는다. 한 번만 내 컴퓨터에서 `DATABASE_URL`을 환경변수로 준 채 `python3 manage.py migrate` 를 실행한다.
+4. 배포 호스트 이름(`VERCEL_URL` 등)은 자동으로 허용 목록에 들어간다. 별도 도메인을 쓰면 `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS`에 추가한다.
+
 ## 6번(T06) 이력 잇기
 
 T07 소스 이력에 제출했던 T06 commit이 조상으로 들어 있어야 한다. 이 폴더는 새 저장소에서 시작했으므로, T06 저장소의 주소와 commit을 정해 아래처럼 이어 붙인다.

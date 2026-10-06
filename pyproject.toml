@@ -1,0 +1,15 @@
+[project]
+name = "plandoo-diary2"
+version = "2.0.0"
+description = "플랜두씨 다이어리 2 (로그인한 나만 보는 다이어리)"
+requires-python = ">=3.12"
+dependencies = [
+    "Django==6.1.1",
+    "gunicorn==26.2.0",
+    "whitenoise==6.12.0",
+    "dj-database-url==3.1.2",
+    "psycopg2-binary==2.9.13",
+]
+
+[tool.vercel]
+entrypoint = "config.wsgi:application"

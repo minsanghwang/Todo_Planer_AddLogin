@@ -6,6 +6,7 @@
   DATABASE_URL        PostgreSQL 주소 (없으면 로컬 SQLite)
   DJANGO_DEBUG        "1"이면 개발 모드
   DJANGO_ALLOWED_HOSTS / DJANGO_CSRF_TRUSTED_ORIGINS  쉼표로 구분
+Vercel에서는 VERCEL_URL 등 시스템 환경변수에서 허용 호스트와 CSRF 출처를 자동으로 가져온다.
 """
 import os
 import secrets
@@ -26,12 +27,22 @@ if not SECRET_KEY:
         raise RuntimeError("DJANGO_SECRET_KEY 환경변수가 없습니다. 배포 환경에 등록하세요.")
 
 ALLOWED_HOSTS = [h for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h]
-_render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
-if _render_host:
-    ALLOWED_HOSTS.append(_render_host)
 CSRF_TRUSTED_ORIGINS = [o for o in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o]
-if _render_host:
-    CSRF_TRUSTED_ORIGINS.append(f"https://{_render_host}")
+
+# 배포 환경이 알려 주는 우리 서비스의 정확한 호스트만 추가한다.
+# (*.vercel.app 같은 와일드카드는 쓰지 않는다: 남의 vercel.app 사이트가 우리 로그인 요청을 보낼 수 있게 되므로)
+_platform_hosts = [
+    os.environ.get("RENDER_EXTERNAL_HOSTNAME"),          # Render
+    os.environ.get("VERCEL_URL"),                         # Vercel: 이번 배포의 고유 주소
+    os.environ.get("VERCEL_BRANCH_URL"),                  # Vercel: 브랜치 주소
+    os.environ.get("VERCEL_PROJECT_PRODUCTION_URL"),      # Vercel: 프로덕션 주소
+]
+for _h in _platform_hosts:
+    if _h and _h not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_h)
+        CSRF_TRUSTED_ORIGINS.append(f"https://{_h}")
+
+IS_VERCEL = bool(os.environ.get("VERCEL"))
 
 INSTALLED_APPS = [
     "django.contrib.auth",
@@ -73,9 +84,13 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {
     "default": dj_database_url.config(
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
-        conn_max_age=600,
+        # 서버리스(Vercel)는 요청마다 새 실행 환경이 생길 수 있어 연결을 붙들어 두지 않는다.
+        conn_max_age=0 if IS_VERCEL else 600,
     )
 }
+if IS_VERCEL and DATABASES["default"]["ENGINE"].endswith("postgresql"):
+    # 연결 풀러(트랜잭션 모드)를 거쳐도 동작하도록
+    DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
 
 # ---- 비밀번호: 되돌릴 수 없게 보관 (PBKDF2-SHA256 + 계정마다 다른 소금값) ----
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.PBKDF2PasswordHasher"]
@@ -105,11 +120,11 @@ TIME_ZONE = "Asia/Seoul"
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
