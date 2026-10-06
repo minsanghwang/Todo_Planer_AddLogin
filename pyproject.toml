@@ -13,3 +13,6 @@ dependencies = [
 
 [tool.vercel]
 entrypoint = "config.wsgi:application"
+
+[tool.vercel.scripts]
+build = "python manage.py migrate --no-input"
