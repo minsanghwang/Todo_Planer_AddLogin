@@ -126,3 +126,64 @@ class ExperimentRules(TestCase):
         data = self.client.get("/api/experiment/").json()
         self.assertIsNone(data["settings"])
         self.assertEqual(data["days"], [])
+
+
+class ImportFromT06(TestCase):
+    """6번 다이어리(단일 HTML)가 내보내는 JSON 모양 그대로 내 계정으로 옮겨지는지."""
+
+    V1 = {
+        "exportedAt": "2026-10-05T12:00:00.000Z",
+        "topics": ["운동", "러닝"],
+        "plans": [{
+            "id": "id_plan1", "title": "6번 계획", "topicTags": ["운동", "러닝"], "periodStart": "2026-10-01",
+            "periodEnd": "2026-10-31", "priority": 1, "successCriteria": "주 3회", "estimatedTime": 10,
+            "improvementNotes": [{"id": "id_n1", "text": "예상 시간 늘리기", "addedAt": "2026-10-04T01:00:00.000Z"}],
+            "history": [{"title": "6번 계획(처음)", "topicTags": ["운동"], "periodStart": "2026-10-01", "periodEnd": "2026-10-20",
+                         "priority": 1, "successCriteria": "주 2회", "estimatedTime": 6, "editedAt": "2026-10-03T01:00:00.000Z"}],
+            "deleted": False, "createdAt": "2026-10-01T00:00:00.000Z", "updatedAt": "2026-10-03T01:00:00.000Z",
+        }, {"id": "id_plan_gone", "title": "지운 계획", "periodStart": "2026-10-01", "periodEnd": "2026-10-02",
+            "estimatedTime": 1, "deleted": True}],
+        "todos": [{
+            "id": "id_todo1", "planId": "id_plan1", "title": "6번 할 일", "tags": ["러닝"], "periodStart": "2026-10-02",
+            "dueDate": "2026-10-10", "successCriteria": "5km", "estimatedTime": 1.5, "priority": 1, "status": "completed",
+            "completedAt": "2026-10-05T09:30:00.000Z", "history": [], "deleted": False,
+        }, {"id": "id_todo_gone", "planId": None, "title": "지운 할 일", "dueDate": "2026-10-11", "estimatedTime": 1, "deleted": True}],
+        "execRecords": [
+            {"id": "id_r1", "todoId": "id_todo1", "start": "2026-10-05T08:00", "end": "2026-10-05T09:30", "actualMinutes": 90,
+             "blockedReason": "비가 와서 멈춤", "createdAt": "2026-10-05T00:00:00.000Z"},
+            {"id": "id_r_orphan", "todoId": "id_todo_gone", "start": "2026-10-05T08:00", "end": "2026-10-05T09:00", "actualMinutes": 60},
+        ],
+    }
+
+    def setUp(self):
+        self.me = User.objects.create_user("t06.owner", password="Test-pw-for-unit-tests-3")
+        self.other = User.objects.create_user("t06.other", password="Test-pw-for-unit-tests-4")
+        self.client.force_login(self.me)
+
+    def test_imports_into_my_account_only(self):
+        r = self.client.post("/api/import/", json.dumps(self.V1), content_type="application/json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual((r.json()["plans"], r.json()["todos"]), (1, 1))  # 지운 것은 가져오지 않는다
+        data = self.client.get("/api/data/").json()
+        self.assertEqual([p["title"] for p in data["plans"]], ["6번 계획"])
+        plan = data["plans"][0]
+        self.assertEqual(plan["topicTags"], ["운동", "러닝"])
+        self.assertEqual(plan["improvementNotes"][0]["text"], "예상 시간 늘리기")
+        self.assertEqual(plan["history"][0]["title"], "6번 계획(처음)")     # 6번의 수정 전 계획도 그대로
+        todo = data["todos"][0]
+        self.assertEqual((todo["title"], todo["status"], todo["planId"]), ("6번 할 일", "completed", plan["id"]))
+        self.assertTrue(todo["completedAt"])
+        recs = data["execRecords"]
+        self.assertEqual(len(recs), 1)                                       # 지운 할 일에 딸린 기록은 건너뜀
+        self.assertEqual((recs[0]["actualMinutes"], recs[0]["blockedReason"]), (90, "비가 와서 멈춤"))
+        # 다른 계정에는 하나도 보이지 않는다
+        self.client.force_login(self.other)
+        other = self.client.get("/api/data/").json()
+        self.assertEqual((other["plans"], other["todos"], other["execRecords"]), ([], [], []))
+
+    def test_bad_file_is_rejected_without_partial_import(self):
+        broken = {"plans": [{"title": "정상", "periodStart": "2026-10-01", "periodEnd": "2026-10-02", "estimatedTime": 1},
+                            {"title": "날짜 없음", "estimatedTime": 1}]}
+        r = self.client.post("/api/import/", json.dumps(broken), content_type="application/json")
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(self.client.get("/api/data/").json()["plans"], [])  # 일부만 들어가지 않는다(전부 취소)

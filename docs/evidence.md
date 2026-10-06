@@ -7,14 +7,14 @@
 ```
 GET /
 → 200
-   Set-Cookie: csrftoken=ke9Q…생략; expires=Tue, 05 Oct 2027 00:29:35 GMT; Max-Age=31449600; Path=/; SameSite=Lax
+   Set-Cookie: csrftoken=qq6V…생략; expires=Tue, 05 Oct 2027 00:34:53 GMT; Max-Age=31449600; Path=/; SameSite=Lax
    (HTML 922자) 로그인 · 플랜두씨 다이어리 2              플랜두씨 다이어리     내 계획과 기록은 로그인한 나만 볼 수 있습니다.                    아이디             비밀번호             로그인
 ```
 - ✅ 첫 화면은 로그인 화면이다(로그인 없이 열림)
 **로그인 없이 자료 화면(/app/) 열기**
 ```
 GET /app/
-Cookie: csrftoken=ke9Q…생략
+Cookie: csrftoken=qq6V…생략
 → 302
    Location: /login/?next=/app/
 ```
@@ -22,7 +22,7 @@ Cookie: csrftoken=ke9Q…생략
 **로그인 없이 자료 API 직접 요청**
 ```
 GET /api/data/
-Cookie: csrftoken=ke9Q…생략
+Cookie: csrftoken=qq6V…생략
 → 401
    {"detail": "로그인이 필요합니다."}
 ```
@@ -32,59 +32,59 @@ Cookie: csrftoken=ke9Q…생략
 **같은 아이디로 다시 가입**
 ```
 POST /signup/
-Cookie: csrftoken=8aUC…생략
+Cookie: csrftoken=CTU1…생략
 Body: username=tester.a&password=***&password2=***
 → 400
-   Set-Cookie: csrftoken=8aUC…생략; expires=Tue, 05 Oct 2027 00:29:36 GMT; Max-Age=31449600; Path=/; SameSite=Lax
+   Set-Cookie: csrftoken=CTU1…생략; expires=Tue, 05 Oct 2027 00:34:54 GMT; Max-Age=31449600; Path=/; SameSite=Lax
    (HTML 1117자) 가입 · 플랜두씨 다이어리 2              가입하기     아이디는 영문 소문자·숫자·점·밑줄·하이픈 3~30자, 비밀번호는 8자 이상입니다.      이미 사용 중인 아이디입니다.                  아이디
 ```
 - ✅ 같은 아이디로 두 번 가입되지 않는다
 **대소문자만 바꿔 가입**
 ```
 POST /signup/
-Cookie: csrftoken=8aUC…생략
+Cookie: csrftoken=CTU1…생략
 Body: username=TESTER.A&password=***&password2=***
 → 400
-   Set-Cookie: csrftoken=8aUC…생략; expires=Tue, 05 Oct 2027 00:29:36 GMT; Max-Age=31449600; Path=/; SameSite=Lax
+   Set-Cookie: csrftoken=CTU1…생략; expires=Tue, 05 Oct 2027 00:34:54 GMT; Max-Age=31449600; Path=/; SameSite=Lax
    (HTML 1117자) 가입 · 플랜두씨 다이어리 2              가입하기     아이디는 영문 소문자·숫자·점·밑줄·하이픈 3~30자, 비밀번호는 8자 이상입니다.      이미 사용 중인 아이디입니다.                  아이디
 ```
 - ✅ 대소문자만 다른 아이디로도 이중 가입되지 않는다 — 해당 아이디 행 수 1
 **아이디는 맞고 비밀번호가 틀림**
 ```
 POST /login/
-Cookie: csrftoken=nhCK…생략
+Cookie: csrftoken=hmSt…생략
 Body: username=tester.a&password=***
 → 401
-   Set-Cookie: csrftoken=nhCK…생략; expires=Tue, 05 Oct 2027 00:29:37 GMT; Max-Age=31449600; Path=/; SameSite=Lax
+   Set-Cookie: csrftoken=hmSt…생략; expires=Tue, 05 Oct 2027 00:34:54 GMT; Max-Age=31449600; Path=/; SameSite=Lax
    (HTML 991자) 로그인 · 플랜두씨 다이어리 2              플랜두씨 다이어리     내 계획과 기록은 로그인한 나만 볼 수 있습니다.     아이디 또는 비밀번호가 올바르지 않습니다.                 아이디
 ```
 **없는 아이디**
 ```
 POST /login/
-Cookie: csrftoken=Wno8…생략
+Cookie: csrftoken=25h2…생략
 Body: username=nobody.here&password=***
 → 401
-   Set-Cookie: csrftoken=Wno8…생략; expires=Tue, 05 Oct 2027 00:29:37 GMT; Max-Age=31449600; Path=/; SameSite=Lax
+   Set-Cookie: csrftoken=25h2…생략; expires=Tue, 05 Oct 2027 00:34:55 GMT; Max-Age=31449600; Path=/; SameSite=Lax
    (HTML 994자) 로그인 · 플랜두씨 다이어리 2              플랜두씨 다이어리     내 계획과 기록은 로그인한 나만 볼 수 있습니다.     아이디 또는 비밀번호가 올바르지 않습니다.                 아이디
 ```
 - ✅ 비밀번호만 틀렸을 때와 아이디가 없을 때 안내 문구·상태코드가 같다 — 둘 다 401: 아이디 또는 비밀번호가 올바르지 않습니다.
 **올바른 아이디·비밀번호로 로그인**
 ```
 POST /login/
-Cookie: csrftoken=7TdO…생략
+Cookie: csrftoken=PoBe…생략
 Body: username=tester.a&password=***
 → 302
    Location: /app/
-   Set-Cookie: csrftoken=sEBD…생략; expires=Tue, 05 Oct 2027 00:29:37 GMT; Max-Age=31449600; Path=/; SameSite=Lax
-   Set-Cookie: sessionid=sb5u…생략; expires=Wed, 07 Oct 2026 00:29:37 GMT; HttpOnly; Max-Age=86400; Path=/; SameSite=Lax
+   Set-Cookie: csrftoken=y2gh…생략; expires=Tue, 05 Oct 2027 00:34:55 GMT; Max-Age=31449600; Path=/; SameSite=Lax
+   Set-Cookie: sessionid=7h8e…생략; expires=Wed, 07 Oct 2026 00:34:55 GMT; HttpOnly; Max-Age=86400; Path=/; SameSite=Lax
 ```
 - ✅ 만든 계정으로 로그인할 수 있다
 
 ## 카드 2 — 비밀번호 보관
 DB(`auth_user.password`)에 저장된 값 — 알고리즘$반복횟수$소금값$해시 (소금값·해시는 앞부분만):
 ```
-tester.a: pbkdf2_sha256$1500000$ysCFg7…생략$A5uogI…생략
-tester.b: pbkdf2_sha256$1500000$LLhgsv…생략$Hhoz2V…생략
+tester.a: pbkdf2_sha256$1500000$QBmYIN…생략$bncIl2…생략
+tester.b: pbkdf2_sha256$1500000$sHXUvQ…생략$4NmR2Y…생략
 ```
 - ✅ 저장된 값이 PBKDF2-SHA256 해시 형식이다 — 반복 1500000회
 - ✅ 저장된 값에 입력한 비밀번호 글자가 그대로 들어 있지 않다
@@ -95,7 +95,7 @@ tester.b: pbkdf2_sha256$1500000$LLhgsv…생략$Hhoz2V…생략
 **로그인한 상태로 /api/me/ 요청 (성공)**
 ```
 GET /api/me/
-Cookie: csrftoken=txz7…생략; sessionid=ih49…생략
+Cookie: csrftoken=5EJs…생략; sessionid=kchc…생략
 → 200
    {"username": "tester.a", "today": "2026-10-06"}
 ```
@@ -103,22 +103,22 @@ Cookie: csrftoken=txz7…생략; sessionid=ih49…생략
 **로그인한 상태로 자료 화면(/app/) 열기 (성공)**
 ```
 GET /app/
-Cookie: csrftoken=txz7…생략; sessionid=ih49…생략
+Cookie: csrftoken=5EJs…생략; sessionid=kchc…생략
 → 200
-   Set-Cookie: csrftoken=txz7…생략; expires=Tue, 05 Oct 2027 00:29:37 GMT; Max-Age=31449600; Path=/; SameSite=Lax
+   Set-Cookie: csrftoken=5EJs…생략; expires=Tue, 05 Oct 2027 00:34:55 GMT; Max-Age=31449600; Path=/; SameSite=Lax
    (HTML 754자) 다이어리 · 플랜두씨 다이어리 2                     플랜두씨 다이어리   · tester.a 님의 기록 (나만 볼 수 있음)          로그아웃           불러오는 중...
 ```
 **로그인한 상태로 자료 API(/api/data/) 요청 (성공)**
 ```
 GET /api/data/
-Cookie: csrftoken=txz7…생략; sessionid=ih49…생략
+Cookie: csrftoken=5EJs…생략; sessionid=kchc…생략
 → 200
    {"plans": [], "todos": [], "execRecords": [], "today": "2026-10-06"}
 ```
 **로그아웃**
 ```
 POST /logout/
-Cookie: csrftoken=txz7…생략; sessionid=ih49…생략
+Cookie: csrftoken=5EJs…생략; sessionid=kchc…생략
 → 302
    Location: /
    Set-Cookie: sessionid=""; expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; Path=/; SameSite=Lax
@@ -127,7 +127,7 @@ Cookie: csrftoken=txz7…생략; sessionid=ih49…생략
 **로그아웃 전에 복사해 둔 같은 쿠키로, 같은 주소·같은 방식으로 다시 요청 (거절)**
 ```
 GET /api/me/
-Cookie: csrftoken=txz7…생략; sessionid=ih49…생략
+Cookie: csrftoken=5EJs…생략; sessionid=kchc…생략
 → 401
    Set-Cookie: sessionid=""; expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; Path=/; SameSite=Lax
    {"detail": "로그인이 필요합니다."}
@@ -135,30 +135,30 @@ Cookie: csrftoken=txz7…생략; sessionid=ih49…생략
 - ✅ 로그아웃 뒤 같은 값으로 다시 요청하면 거절(401)된다
 로그인 응답의 세션 쿠키 설정 줄(값은 가림):
 ```
-sessionid=ggt4…생략; expires=Wed, 07 Oct 2026 00:29:38 GMT; HttpOnly; Max-Age=86400; Path=/; SameSite=Lax
+sessionid=xrdm…생략; expires=Wed, 07 Oct 2026 00:34:56 GMT; HttpOnly; Max-Age=86400; Path=/; SameSite=Lax
 ```
 - ✅ 세션 쿠키에 만료(Max-Age=86400, 24시간)와 HttpOnly가 붙는다
-- ✅ 서버에 저장된 세션에 만료 시각이 있다 — expire_date=2026-10-07 00:29:38.446943
+- ✅ 서버에 저장된 세션에 만료 시각이 있다 — expire_date=2026-10-07 00:34:56.140604
 **기기1에서 비밀번호 변경**
 ```
 POST /api/account/password/
-Cookie: csrftoken=E3mI…생략; sessionid=n72g…생략
+Cookie: csrftoken=Ejho…생략; sessionid=066g…생략
 Body: {"oldPassword": "***", "newPassword": "***"}
 → 200
-   Set-Cookie: sessionid=d3ok…생략; expires=Wed, 07 Oct 2026 00:29:40 GMT; HttpOnly; Max-Age=86400; Path=/; SameSite=Lax
+   Set-Cookie: sessionid=8z2p…생략; expires=Wed, 07 Oct 2026 00:34:57 GMT; HttpOnly; Max-Age=86400; Path=/; SameSite=Lax
    {"ok": true}
 ```
 **변경한 기기1은 계속 사용 가능**
 ```
 GET /api/me/
-Cookie: csrftoken=E3mI…생략; sessionid=d3ok…생략
+Cookie: csrftoken=Ejho…생략; sessionid=8z2p…생략
 → 200
    {"username": "tester.a", "today": "2026-10-06"}
 ```
 **변경 전에 로그인해 둔 기기2의 세션으로 요청 (거절)**
 ```
 GET /api/me/
-Cookie: csrftoken=DiEd…생략; sessionid=vxjk…생략
+Cookie: csrftoken=TJrp…생략; sessionid=woi8…생략
 → 401
    Set-Cookie: sessionid=""; expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; Path=/; SameSite=Lax
    {"detail": "로그인이 필요합니다."}
@@ -175,35 +175,35 @@ Cookie: csrftoken=DiEd…생략; sessionid=vxjk…생략
 **[A] 내 할 일 읽기 (성공)**
 ```
 GET /api/todos/1/
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 → 200
    {"planId": "1", "title": "A계정 할 일", "tags": ["러닝"], "periodStart": null, "dueDate": "2026-10-20", "successCriteria": "5km", "estimatedTime": 1.5, "priority": 1, "id": "1", "status": "in_progress", "completedAt": null, "history": []}
 ```
 **[A] B의 할 일 읽기 (거절)**
 ```
 GET /api/todos/3/
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 → 404
    {"detail": "찾을 수 없습니다."}
 ```
 **[A] B의 계획 읽기 (거절)**
 ```
 GET /api/plans/3/
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 → 404
    {"detail": "찾을 수 없습니다."}
 ```
 **[A] B의 실행 기록 읽기 (거절)**
 ```
 GET /api/records/2/
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 → 404
    {"detail": "찾을 수 없습니다."}
 ```
 **[A] 내 할 일 수정 (성공)**
 ```
 PUT /api/todos/2/
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 Body: {"title": "내가 고친 제목", "dueDate": "2026-10-23", "estimatedTime": 1}
 → 200
    {"planId": null, "title": "내가 고친 제목", "tags": [], "periodStart": null, "dueDate": "2026-10-23", "successCriteria": "", "estimatedTime": 1.0, "priority": 2, "id": "2", "status": "in_progress", "completedAt": null, "history": [{"planId": null, "title": "A계정 할 일2", "tags": [], "periodStart": null, "dueDate": "2026-10-22", "successCriteria": "", "estimatedTime": 1.0, "priority": 2, "editedAt": "2026-1
@@ -211,14 +211,14 @@ Body: {"title": "내가 고친 제목", "dueDate": "2026-10-23", "estimatedTime"
 **[A] 내 할 일 삭제 (성공)**
 ```
 DELETE /api/todos/5/
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 → 200
    {"ok": true}
 ```
 **[A] B의 할 일 수정 (거절)**
 ```
 PUT /api/todos/3/
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 Body: {"title": "남이 고친 제목", "dueDate": "2026-10-23", "estimatedTime": 9}
 → 404
    {"detail": "찾을 수 없습니다."}
@@ -226,7 +226,7 @@ Body: {"title": "남이 고친 제목", "dueDate": "2026-10-23", "estimatedTime"
 **[A] B의 계획 수정 (거절)**
 ```
 PUT /api/plans/3/
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 Body: {"title": "남이 고친 계획", "periodStart": "2026-10-01", "periodEnd": "2026-10-02", "estimatedTime": 9}
 → 404
    {"detail": "찾을 수 없습니다."}
@@ -234,28 +234,28 @@ Body: {"title": "남이 고친 계획", "periodStart": "2026-10-01", "periodEnd"
 **[A] B의 할 일 삭제 (거절)**
 ```
 DELETE /api/todos/3/
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 → 404
    {"detail": "찾을 수 없습니다."}
 ```
 **[A] B의 계획 삭제 (거절)**
 ```
 DELETE /api/plans/3/
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 → 404
    {"detail": "찾을 수 없습니다."}
 ```
 **[A] B의 실행 기록 삭제 (거절)**
 ```
 DELETE /api/records/2/
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 → 404
    {"detail": "찾을 수 없습니다."}
 ```
 **[A] B의 할 일에 실행 기록 끼워 넣기 (거절)**
 ```
 POST /api/todos/3/records/
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 Body: {"start": "2026-10-06T09:00", "end": "2026-10-06T09:30", "requestId": "x1"}
 → 404
    {"detail": "찾을 수 없습니다."}
@@ -263,14 +263,14 @@ Body: {"start": "2026-10-06T09:00", "end": "2026-10-06T09:30", "requestId": "x1"
 **[A] B의 할 일을 완료로 바꾸기 (거절)**
 ```
 POST /api/todos/3/complete/
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 → 404
    {"detail": "찾을 수 없습니다."}
 ```
 **[A] 내 할 일을 B의 계획에 붙이기 (거절)**
 ```
 POST /api/todos/
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 Body: {"title": "남의 계획에 붙이기", "planId": 3, "dueDate": "2026-10-30", "estimatedTime": 1}
 → 404
    {"detail": "찾을 수 없습니다."}
@@ -278,7 +278,7 @@ Body: {"title": "남의 계획에 붙이기", "planId": 3, "dueDate": "2026-10-3
 **[A] B의 할 일 순서 바꾸기 (거절)**
 ```
 POST /api/todos/reorder/
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 Body: {"ids": [3, 4]}
 → 404
    {"detail": "찾을 수 없습니다."}
@@ -288,35 +288,35 @@ Body: {"ids": [3, 4]}
 **[B] 내 할 일 읽기 (성공)**
 ```
 GET /api/todos/3/
-Cookie: csrftoken=spPy…생략; sessionid=tfvs…생략
+Cookie: csrftoken=YlrC…생략; sessionid=154r…생략
 → 200
    {"planId": "3", "title": "B계정 할 일", "tags": ["러닝"], "periodStart": null, "dueDate": "2026-10-20", "successCriteria": "5km", "estimatedTime": 1.5, "priority": 1, "id": "3", "status": "in_progress", "completedAt": null, "history": []}
 ```
 **[B] A의 할 일 읽기 (거절)**
 ```
 GET /api/todos/1/
-Cookie: csrftoken=spPy…생략; sessionid=tfvs…생략
+Cookie: csrftoken=YlrC…생략; sessionid=154r…생략
 → 404
    {"detail": "찾을 수 없습니다."}
 ```
 **[B] A의 계획 읽기 (거절)**
 ```
 GET /api/plans/1/
-Cookie: csrftoken=spPy…생략; sessionid=tfvs…생략
+Cookie: csrftoken=YlrC…생략; sessionid=154r…생략
 → 404
    {"detail": "찾을 수 없습니다."}
 ```
 **[B] A의 실행 기록 읽기 (거절)**
 ```
 GET /api/records/1/
-Cookie: csrftoken=spPy…생략; sessionid=tfvs…생략
+Cookie: csrftoken=YlrC…생략; sessionid=154r…생략
 → 404
    {"detail": "찾을 수 없습니다."}
 ```
 **[B] 내 할 일 수정 (성공)**
 ```
 PUT /api/todos/4/
-Cookie: csrftoken=spPy…생략; sessionid=tfvs…생략
+Cookie: csrftoken=YlrC…생략; sessionid=154r…생략
 Body: {"title": "내가 고친 제목", "dueDate": "2026-10-23", "estimatedTime": 1}
 → 200
    {"planId": null, "title": "내가 고친 제목", "tags": [], "periodStart": null, "dueDate": "2026-10-23", "successCriteria": "", "estimatedTime": 1.0, "priority": 2, "id": "4", "status": "in_progress", "completedAt": null, "history": [{"planId": null, "title": "B계정 할 일2", "tags": [], "periodStart": null, "dueDate": "2026-10-22", "successCriteria": "", "estimatedTime": 1.0, "priority": 2, "editedAt": "2026-1
@@ -324,14 +324,14 @@ Body: {"title": "내가 고친 제목", "dueDate": "2026-10-23", "estimatedTime"
 **[B] 내 할 일 삭제 (성공)**
 ```
 DELETE /api/todos/6/
-Cookie: csrftoken=spPy…생략; sessionid=tfvs…생략
+Cookie: csrftoken=YlrC…생략; sessionid=154r…생략
 → 200
    {"ok": true}
 ```
 **[B] A의 할 일 수정 (거절)**
 ```
 PUT /api/todos/1/
-Cookie: csrftoken=spPy…생략; sessionid=tfvs…생략
+Cookie: csrftoken=YlrC…생략; sessionid=154r…생략
 Body: {"title": "남이 고친 제목", "dueDate": "2026-10-23", "estimatedTime": 9}
 → 404
    {"detail": "찾을 수 없습니다."}
@@ -339,7 +339,7 @@ Body: {"title": "남이 고친 제목", "dueDate": "2026-10-23", "estimatedTime"
 **[B] A의 계획 수정 (거절)**
 ```
 PUT /api/plans/1/
-Cookie: csrftoken=spPy…생략; sessionid=tfvs…생략
+Cookie: csrftoken=YlrC…생략; sessionid=154r…생략
 Body: {"title": "남이 고친 계획", "periodStart": "2026-10-01", "periodEnd": "2026-10-02", "estimatedTime": 9}
 → 404
    {"detail": "찾을 수 없습니다."}
@@ -347,28 +347,28 @@ Body: {"title": "남이 고친 계획", "periodStart": "2026-10-01", "periodEnd"
 **[B] A의 할 일 삭제 (거절)**
 ```
 DELETE /api/todos/1/
-Cookie: csrftoken=spPy…생략; sessionid=tfvs…생략
+Cookie: csrftoken=YlrC…생략; sessionid=154r…생략
 → 404
    {"detail": "찾을 수 없습니다."}
 ```
 **[B] A의 계획 삭제 (거절)**
 ```
 DELETE /api/plans/1/
-Cookie: csrftoken=spPy…생략; sessionid=tfvs…생략
+Cookie: csrftoken=YlrC…생략; sessionid=154r…생략
 → 404
    {"detail": "찾을 수 없습니다."}
 ```
 **[B] A의 실행 기록 삭제 (거절)**
 ```
 DELETE /api/records/1/
-Cookie: csrftoken=spPy…생략; sessionid=tfvs…생략
+Cookie: csrftoken=YlrC…생략; sessionid=154r…생략
 → 404
    {"detail": "찾을 수 없습니다."}
 ```
 **[B] A의 할 일에 실행 기록 끼워 넣기 (거절)**
 ```
 POST /api/todos/1/records/
-Cookie: csrftoken=spPy…생략; sessionid=tfvs…생략
+Cookie: csrftoken=YlrC…생략; sessionid=154r…생략
 Body: {"start": "2026-10-06T09:00", "end": "2026-10-06T09:30", "requestId": "x1"}
 → 404
    {"detail": "찾을 수 없습니다."}
@@ -376,14 +376,14 @@ Body: {"start": "2026-10-06T09:00", "end": "2026-10-06T09:30", "requestId": "x1"
 **[B] A의 할 일을 완료로 바꾸기 (거절)**
 ```
 POST /api/todos/1/complete/
-Cookie: csrftoken=spPy…생략; sessionid=tfvs…생략
+Cookie: csrftoken=YlrC…생략; sessionid=154r…생략
 → 404
    {"detail": "찾을 수 없습니다."}
 ```
 **[B] 내 할 일을 A의 계획에 붙이기 (거절)**
 ```
 POST /api/todos/
-Cookie: csrftoken=spPy…생략; sessionid=tfvs…생략
+Cookie: csrftoken=YlrC…생략; sessionid=154r…생략
 Body: {"title": "남의 계획에 붙이기", "planId": 1, "dueDate": "2026-10-30", "estimatedTime": 1}
 → 404
    {"detail": "찾을 수 없습니다."}
@@ -391,7 +391,7 @@ Body: {"title": "남의 계획에 붙이기", "planId": 1, "dueDate": "2026-10-3
 **[B] A의 할 일 순서 바꾸기 (거절)**
 ```
 POST /api/todos/reorder/
-Cookie: csrftoken=spPy…생략; sessionid=tfvs…생략
+Cookie: csrftoken=YlrC…생략; sessionid=154r…생략
 Body: {"ids": [1, 2]}
 → 404
    {"detail": "찾을 수 없습니다."}
@@ -423,7 +423,7 @@ A 계정 (B가 건드리기 전 → 후): {'plans': 2, 'todos': 2, 'records': 1}
 **본문(owner·user·username·user_id)과 헤더(X-User-Id·X-Owner·X-Account)에 B를 적어 할 일 만들기**
 ```
 POST /api/todos/
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 X-User-Id: 2
 X-Owner: tester.b
 X-Account: tester.b
@@ -434,7 +434,7 @@ Body: {"title": "A가 B 이름으로 만들기", "dueDate": "2026-10-25", "estim
 **주소(?owner&user&username&user_id)와 헤더에 B를 적어 목록 요청**
 ```
 GET /api/data/?owner=3&user=tester.b&username=tester.b&user_id=2
-Cookie: csrftoken=Kqgn…생략; sessionid=gwpg…생략
+Cookie: csrftoken=AdVf…생략; sessionid=rjzd…생략
 X-User-Id: 2
 X-Owner: tester.b
 → 200
@@ -450,21 +450,21 @@ X-Owner: tester.b
 **로그인 없이 목록 요청 (거절)**
 ```
 GET /api/data/
-Cookie: csrftoken=ke9Q…생략
+Cookie: csrftoken=qq6V…생략
 → 401
    {"detail": "로그인이 필요합니다."}
 ```
 **로그인 없이 B의 할 일 한 건 요청 (거절)**
 ```
 GET /api/todos/3/
-Cookie: csrftoken=ke9Q…생략
+Cookie: csrftoken=qq6V…생략
 → 401
    {"detail": "로그인이 필요합니다."}
 ```
 **로그인 없이 B의 할 일 삭제 요청 (거절)**
 ```
 DELETE /api/todos/3/
-Cookie: csrftoken=ke9Q…생략
+Cookie: csrftoken=qq6V…생략
 → 401
    {"detail": "로그인이 필요합니다."}
 ```
@@ -484,7 +484,7 @@ Cookie: csrftoken=ke9Q…생략
 **틀린 비밀번호로 계정 삭제 시도 (거절)**
 ```
 POST /api/account/delete/
-Cookie: csrftoken=Gr0n…생략; sessionid=u8gz…생략
+Cookie: csrftoken=3DbM…생략; sessionid=4ygc…생략
 Body: {"password": "***"}
 → 400
    {"detail": "비밀번호가 올바르지 않습니다."}
@@ -492,7 +492,7 @@ Body: {"password": "***"}
 **올바른 비밀번호로 계정 삭제**
 ```
 POST /api/account/delete/
-Cookie: csrftoken=Gr0n…생략; sessionid=u8gz…생략
+Cookie: csrftoken=3DbM…생략; sessionid=4ygc…생략
 Body: {"password": "***"}
 → 200
    Set-Cookie: sessionid=""; expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; Path=/; SameSite=Lax
@@ -512,14 +512,14 @@ Body: {"password": "***"}
 ## 서버 로그·저장소 전체 검사
 ```
 서버 로그 마지막 줄들(원문 그대로, 본문·쿠키는 기록되지 않음):
-[06/Oct/2026 09:29:42] "GET /static/diary/app.js HTTP/1.1" 200 33763
-2026-10-06 09:29:42,970 GET /api/data/ -> 200 (user)
-[06/Oct/2026 09:29:42] "GET /api/data/ HTTP/1.1" 200 2039
-2026-10-06 09:29:42,974 GET /api/me/ -> 200 (user)
-[06/Oct/2026 09:29:42] "GET /api/me/ HTTP/1.1" 200 47
-2026-10-06 09:29:42,978 GET /nope-be6362 -> 404 (anon)
-2026-10-06 09:29:42,979 Not Found: /nope-be6362
-[06/Oct/2026 09:29:42] "GET /nope-be6362 HTTP/1.1" 404 6345
+[06/Oct/2026 09:35:00] "GET /static/diary/app.js HTTP/1.1" 200 33763
+2026-10-06 09:35:00,456 GET /api/data/ -> 200 (user)
+[06/Oct/2026 09:35:00] "GET /api/data/ HTTP/1.1" 200 2039
+2026-10-06 09:35:00,459 GET /api/me/ -> 200 (user)
+[06/Oct/2026 09:35:00] "GET /api/me/ HTTP/1.1" 200 47
+2026-10-06 09:35:00,464 GET /nope-637fe0 -> 404 (anon)
+2026-10-06 09:35:00,464 Not Found: /nope-637fe0
+[06/Oct/2026 09:35:00] "GET /nope-637fe0 HTTP/1.1" 404 6345
 ```
 - ✅ 서버 로그에 비밀번호(공통) 원문이 없다
 - ✅ 서버 로그에 비밀번호(다른 계정) 원문이 없다
@@ -529,7 +529,9 @@ Body: {"password": "***"}
 - ✅ 작업 폴더 어디에도 이번 비밀키 원문이 없다
 - ✅ 작업 폴더 어디에도 테스트 비밀번호 원문이 없다
 - ✅ 소스에 비밀키를 문자열로 박아 둔 곳이 없다
-- ⚠️ Git 기록 검사는 커밋이 생긴 뒤 다시 실행하면 함께 확인됩니다.
+- ✅ Git 기록 전체에 이번 비밀키·테스트 비밀번호 원문이 없다
+- ✅ Git 기록 전체에 비밀키를 문자열로 박은 줄이 없다
+- ✅ DB 파일(.sqlite3)과 .env가 Git에 올라가 있지 않다
 
 ## 요약
-통과 60 / 60
+통과 63 / 63

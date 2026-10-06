@@ -15,8 +15,9 @@ python3 manage.py runserver      # http://127.0.0.1:8000/  → 첫 화면이 로
 ## 확인하기
 
 ```bash
-DJANGO_DEBUG=1 python3 manage.py test     # 5일 실험 규칙 테스트 (날짜를 바꿔 가며 5일을 흉내 냄)
+DJANGO_DEBUG=1 python3 manage.py test     # 5일 실험 규칙·6번 JSON 가져오기 테스트 (날짜를 바꿔 가며 5일을 흉내 냄)
 python3 scripts/verify_auth.py            # 임시 DB로 서버를 띄워 실제 HTTP 요청으로 인증·소유자 확인 검사 → docs/evidence.md 갱신
+python3 scripts/verify_ui.py              # 실제 브라우저(Chromium, playwright 필요)로 가입~삭제까지 클릭하며 화면 시험
 ```
 
 ## 환경변수 (비밀값은 코드·Git에 없고 배포 환경에만 둔다)
