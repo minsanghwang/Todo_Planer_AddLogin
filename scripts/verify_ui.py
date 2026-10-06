@@ -78,7 +78,11 @@ def run(page, ctx):
     page.fill("#password2", PW)
     page.click("button[type=submit]")
     wait_loaded(page)
-    check("가입하면 바로 내 다이어리 화면이 열린다", page.url.endswith("/app/") and "ui.tester" in page.inner_text(".topbar"))
+    check("가입하면 바로 내 다이어리 화면이 열린다", page.url.endswith("/app/") and "ui.tester" in page.inner_text(".sidebar"))
+
+    page.screenshot(path=str(SHOTS / "first.png"), full_page=True)
+    check("로그인 뒤 첫 화면은 T06 모양의 캘린더이다", page.locator("#calendarGrid .day-cell").count() == 42 and page.locator(".sidebar").count() == 1)
+    tab(page, "계획")
 
     # --- 계획 두 개
     def add_plan(title, tags, success, est, start="2026-10-01", end="2026-10-31"):
@@ -232,6 +236,34 @@ def run(page, ctx):
     check("내 자료 전체가 JSON 파일 하나로 내보내진다", {"plans", "todos", "execRecords", "experiment"} <= set(data)
           and len(data["plans"]) == 2 and len(data["todos"]) == 2 and len(data["execRecords"]) == 1 and len(data["experiment"]["days"]) == 1)
 
+    # --- 캘린더 (T06 모양)
+    tab(page, "캘린더")
+    check("캘린더에 오늘 표시와 월 제목이 보인다", page.locator(".day-number.today").count() == 1 and "월" in page.inner_text("#monthTitle"))
+    page.evaluate("App.selectDate('2026-10-15')")
+    page.wait_for_selector("#calendarGrid")
+    check("계획 기간에 해당하는 날 칸에 계획 막대가 보인다", page.locator("[data-date='2026-10-15'] .event-pill.plan").count() >= 1)
+    check("날짜를 누르면 오른쪽에 그날 일정이 나온다", "10월 15일" in page.inner_text("#selectedDateTitle") and "운동 습관 만들기" in page.inner_text("#selectedSchedule"))
+    page.click(".topbar button:has-text('＋ 할 일')")
+    page.fill("#cm_title", "달력에서 추가한 일")
+    page.fill("#cm_est", "0.5")
+    page.click("#cm_submit")
+    page.wait_for_selector("[data-date='2026-10-15'] .event-pill.todo")
+    check("추가 팝업으로 만든 할 일이 선택한 날 칸에 생긴다(서버에 저장)", "달력에서 추가한 일" in page.inner_text("#selectedSchedule"))
+    page.locator(".schedule-bar:has-text('달력에서 추가한 일') button:has-text('완료')").click()
+    page.wait_for_selector("[data-date='2026-10-15'] .event-pill.todo.done")
+    check("옆 패널에서 완료하면 칸의 막대가 완료 모양으로 바뀐다", page.locator("[data-date='2026-10-15'] .event-pill.done").count() == 1)
+    page.reload()
+    page.wait_for_selector("#calendarGrid")
+    page.evaluate("App.selectDate('2026-10-15')")
+    page.screenshot(path=str(SHOTS / "calendar.png"), full_page=True)
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.screenshot(path=str(SHOTS / "calendar-wide.png"), full_page=True)
+    page.set_viewport_size({"width": 390, "height": 800})
+    page.screenshot(path=str(SHOTS / "calendar-phone.png"), full_page=True)
+    check("폰 너비에서도 가로로 넘치지 않는다", page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"))
+    page.set_viewport_size({"width": 1100, "height": 900})
+    check("새로고침해도 달력의 기록이 그대로 있다", page.locator("[data-date='2026-10-15'] .event-pill.done").count() == 1)
+
     # --- 로그아웃
     page.click(".topbar button:has-text('로그아웃')")
     page.wait_for_selector("input[name=password]")
@@ -243,6 +275,7 @@ def run(page, ctx):
     page.fill("#password", PW)
     page.click("button[type=submit]")
     wait_loaded(page)
+    tab(page, "계획")
     page.wait_for_selector("h3:has-text('책 읽기')")
     check("다시 로그인하면 내 자료가 그대로 있다", "책 읽기" in page.inner_text("#tabContent"))
 

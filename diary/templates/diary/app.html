@@ -2,12 +2,60 @@
 {% load static %}
 {% block title %}다이어리 · 플랜두씨 다이어리 2{% endblock %}
 {% block body %}
-<div class="wrap">
-  <header class="topbar">
-    <div><strong>플랜두씨 다이어리</strong> <span class="muted">· {{ username }} 님의 기록 (나만 볼 수 있음)</span></div>
-    <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="btn secondary small" type="submit">로그아웃</button></form>
-  </header>
-  <div id="app"><div class="empty">불러오는 중...</div></div>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">플랜두씨 다이어리<small>TO-DO &amp; PLAN</small></div>
+    <nav class="tabs" id="tabs"></nav>
+    <div class="sidebar-card">
+      <div class="mini-day" id="sideDay"></div>
+      <div class="mini-date" id="sideDate"></div>
+      <div class="side-summary">
+        <div class="summary-chip"><b id="sideTodoCount">0</b><span>미완료</span></div>
+        <div class="summary-chip"><b id="sidePlanCount">0</b><span>계획</span></div>
+      </div>
+    </div>
+    <div class="who">{{ username }} 님의 기록<br>로그인한 나만 볼 수 있습니다</div>
+  </aside>
+
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <div class="page-title" id="pageTitle">이번 달을 한눈에</div>
+        <div class="page-sub" id="pageSub"></div>
+      </div>
+      <div class="actions">
+        <button class="btn secondary" type="button" onclick="App.goToday()">오늘</button>
+        <button class="btn" type="button" onclick="App.openComposer('todo')">＋ 할 일</button>
+        <button class="btn" type="button" onclick="App.openComposer('plan')">＋ 계획</button>
+        <form method="post" action="{% url 'logout' %}" style="margin:0">{% csrf_token %}<button class="btn secondary" type="submit">로그아웃</button></form>
+      </div>
+    </header>
+    <div id="msg"></div>
+    <div id="tabContent"><div class="empty">불러오는 중...</div></div>
+  </main>
+</div>
+
+<div id="composerModal" class="modal-backdrop" onclick="App.backdropClose(event)">
+  <div class="modal" role="dialog" aria-labelledby="composerTitle">
+    <div class="modal-head"><h3 id="composerTitle">계획 &amp; 할 일 추가</h3><button class="modal-close" type="button" onclick="App.closeComposer()" aria-label="닫기">×</button></div>
+    <form id="composerForm" onsubmit="return App.submitComposer(event)">
+      <div class="form-grid">
+        <div class="field"><label for="cm_type">종류</label><select id="cm_type" onchange="App.composerType()"><option value="todo">할 일</option><option value="plan">계획</option></select></div>
+        <div class="field"><label for="cm_title">제목</label><input id="cm_title" required placeholder="무엇을 할까요?"></div>
+      </div>
+      <div class="form-grid">
+        <div class="field" id="cm_planWrap"><label for="cm_plan">연결할 계획 (선택)</label><select id="cm_plan"></select></div>
+        <div class="field"><label for="cm_tags">태그 (쉼표로 구분)</label><input id="cm_tags" placeholder="공부, 운동"></div>
+      </div>
+      <div class="form-grid">
+        <div class="field"><label for="cm_start" id="cm_startLabel">시작일</label><input type="date" id="cm_start" required></div>
+        <div class="field"><label for="cm_end" id="cm_endLabel">마감일</label><input type="date" id="cm_end" required></div>
+      </div>
+      <div class="field"><label for="cm_est">예상 시간 (시간 단위)</label><input type="number" step="0.5" min="0" id="cm_est" required value="1"></div>
+      <div class="field"><label for="cm_success">성공 기준 (직접 작성)</label><textarea id="cm_success" placeholder="완료 기준이나 메모를 적어주세요."></textarea></div>
+      <div class="form-actions"><button type="submit" class="btn" id="cm_submit">추가하기</button><button type="button" class="btn secondary" onclick="App.closeComposer()">닫기</button></div>
+    </form>
+  </div>
 </div>
 <script src="{% static 'diary/app.js' %}"></script>
 {% endblock %}

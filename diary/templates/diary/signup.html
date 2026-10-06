@@ -1,7 +1,8 @@
 {% extends "diary/base.html" %}
 {% block title %}가입 · 플랜두씨 다이어리 2{% endblock %}
 {% block body %}
-<main class="auth">
+<div class="auth-page"><main class="auth">
+  <div class="brand">플랜두씨 다이어리<small>TO-DO &amp; PLAN</small></div>
   <h1>가입하기</h1>
   <p class="muted">아이디는 영문 소문자·숫자·점·밑줄·하이픈 3~30자, 비밀번호는 8자 이상입니다.</p>
   {% if errors %}<div class="error" role="alert">{% for e in errors %}<div>{{ e }}</div>{% endfor %}</div>{% endif %}
@@ -16,5 +17,5 @@
     <button class="btn" type="submit">가입</button>
   </form>
   <p class="muted"><a href="{% url 'home' %}">로그인으로 돌아가기</a></p>
-</main>
+</main></div>
 {% endblock %}

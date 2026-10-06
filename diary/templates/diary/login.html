@@ -1,8 +1,9 @@
 {% extends "diary/base.html" %}
 {% block title %}로그인 · 플랜두씨 다이어리 2{% endblock %}
 {% block body %}
-<main class="auth">
-  <h1>플랜두씨 다이어리</h1>
+<div class="auth-page"><main class="auth">
+  <div class="brand">플랜두씨 다이어리<small>TO-DO &amp; PLAN</small></div>
+  <h1>로그인</h1>
   <p class="muted">내 계획과 기록은 로그인한 나만 볼 수 있습니다.</p>
   {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
   <form method="post" action="{% url 'login' %}" autocomplete="on">
@@ -14,5 +15,5 @@
     <button class="btn" type="submit">로그인</button>
   </form>
   <p class="muted">처음이신가요? <a href="{% url 'signup' %}">가입하기</a></p>
-</main>
+</main></div>
 {% endblock %}

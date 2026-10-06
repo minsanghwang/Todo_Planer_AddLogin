@@ -1,9 +1,11 @@
 /* 플랜두씨 다이어리 2 — 화면 로직. 모든 자료는 서버 API(/api/...)에서 읽고 쓴다. */
-const root = document.getElementById('app');
+const root = document.getElementById('tabContent');
+const tabsEl = document.getElementById('tabs');
+const msgEl = document.getElementById('msg');
 let D = { plans: [], todos: [], execRecords: [], today: '' };
 let EXP = null;
 let ui = {
-  tab: 'plans', planEditId: null, todoEditId: null, expandedTodo: null, reviewJump: null, msg: null,
+  tab: 'cal', cal: null, selDate: null, composerType: 'todo', planEditId: null, todoEditId: null, expandedTodo: null, reviewJump: null, msg: null,
   filter: { status: 'all', tag: '', planId: '', search: '', sortBy: 'dueDate', sortDir: 'asc' },
   reviewScope: { type: 'all', value: '' }, refocus: null,
 };
@@ -67,15 +69,104 @@ function filteredTodos() {
 }
 
 // ---------- 렌더 ----------
+const TABS = [['cal', '▦ 캘린더'], ['plans', '계획'], ['todos', '할 일'], ['review', '◷ 돌아보기'], ['exp', '5일 기록'], ['account', '내 계정']];
+const TITLES = {
+  cal: ['이번 달을 한눈에', '계획과 할 일을 같은 화면에서 관리해 보세요.'],
+  plans: ['계획', '기간·성공 기준·예상 시간을 담아 계획을 세웁니다.'],
+  todos: ['할 일', '마감일·태그·실행 기록으로 하루를 쌓아 갑니다.'],
+  review: ['돌아보기', '숫자를 눌러 어떤 할 일에서 나왔는지 확인하세요.'],
+  exp: ['5일 기록', '질문과 지표를 정하고 5일을 기록합니다.'],
+  account: ['내 계정', '내보내기·비밀번호·계정 삭제'],
+};
 function render() {
-  const tabs = [['plans', '계획'], ['todos', '할 일'], ['review', '돌아보기'], ['exp', '5일 기록'], ['account', '내 계정']];
-  root.innerHTML = `
-    <div class="tabs">${tabs.map(([k, l]) => `<div class="tab ${ui.tab === k ? 'active' : ''}" onclick="App.setTab('${k}')">${l}</div>`).join('')}</div>
-    ${ui.msg ? `<div class="okmsg">${esc(ui.msg)}</div>` : ''}
-    <div id="tabContent">${{ plans: renderPlans, todos: renderTodos, review: renderReview, exp: renderExp, account: renderAccount }[ui.tab]()}</div>`;
+  if (!ui.cal && D.today) { const [y, m] = D.today.split('-').map(Number); ui.cal = { y, m: m - 1 }; ui.selDate = D.today; }
+  tabsEl.innerHTML = TABS.map(([k, l]) => `<div class="tab ${ui.tab === k ? 'active' : ''}" onclick="App.setTab('${k}')">${l}</div>`).join('');
+  const [t, sub] = TITLES[ui.tab];
+  document.getElementById('pageTitle').textContent = t;
+  document.getElementById('pageSub').textContent = sub;
+  renderSidebar();
+  msgEl.innerHTML = ui.msg ? `<div class="okmsg">${esc(ui.msg)}</div>` : '';
+  root.innerHTML = { cal: renderCal, plans: renderPlans, todos: renderTodos, review: renderReview, exp: renderExp, account: renderAccount }[ui.tab]();
+  if (ui.tab === 'cal') {
+    wireDrag('todoPriorityList', openTodosByPriority, ids => App.reorder('todos', ids));
+    wireDrag('planPriorityList', () => D.plans, ids => App.reorder('plans', ids));
+  }
   if (ui.tab === 'plans') wireDrag('planDragList', () => D.plans, ids => App.reorder('plans', ids));
   if (ui.tab === 'todos') wireDrag('todoDragList', filteredTodos, ids => App.reorder('todos', ids));
   if (ui.refocus) { const el = document.getElementById(ui.refocus); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } ui.refocus = null; }
+}
+
+function renderSidebar() {
+  if (!D.today) return;
+  const d = new Date(D.today + 'T00:00:00');
+  document.getElementById('sideDay').textContent = d.toLocaleDateString('ko-KR', { weekday: 'long' });
+  document.getElementById('sideDate').textContent = d.getDate();
+  document.getElementById('sideTodoCount').textContent = D.todos.filter(t => t.status !== 'completed').length;
+  document.getElementById('sidePlanCount').textContent = D.plans.length;
+}
+
+// ---- 캘린더 ----
+const pad2 = n => String(n).padStart(2, '0');
+const ymd = (y, m, d) => `${y}-${pad2(m + 1)}-${pad2(d)}`;
+const openTodosByPriority = () => D.todos.filter(t => t.status !== 'completed').sort((a, b) => (a.priority || 999) - (b.priority || 999));
+function dateEvents(ds) {
+  const ev = [];
+  D.plans.forEach(p => { if (p.periodStart <= ds && ds <= p.periodEnd) ev.push({ kind: 'plan', id: p.id, title: p.title, done: false, item: p }); });
+  D.todos.forEach(t => { if (t.dueDate === ds) ev.push({ kind: 'todo', id: t.id, title: t.title, done: t.status === 'completed', item: t }); });
+  return ev;
+}
+function renderCal() {
+  const { y, m } = ui.cal, first = new Date(y, m, 1), start = new Date(y, m, 1 - first.getDay());
+  let cells = '';
+  for (let i = 0; i < 42; i++) {
+    const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const ds = ymd(day.getFullYear(), day.getMonth(), day.getDate());
+    const other = day.getMonth() !== m, today = ds === D.today, sel = ds === ui.selDate;
+    const ev = dateEvents(ds);
+    cells += `<div class="day-cell ${other ? 'other' : ''} ${sel ? 'selected' : ''}" data-date="${ds}" onclick="App.selectDate('${ds}')">
+      <span class="day-number ${today ? 'today' : ''} ${sel && !today ? 'selected' : ''}">${day.getDate()}</span>
+      ${ev.slice(0, 3).map(e => `<span class="event-pill ${e.kind} ${e.done ? 'done' : ''}">${esc(e.title)}</span>`).join('')}
+      ${ev.length > 3 ? `<div class="more-count">+ ${ev.length - 3}개 더보기</div>` : ''}</div>`;
+  }
+  const ev = dateEvents(ui.selDate || D.today);
+  const sd = new Date((ui.selDate || D.today) + 'T00:00:00');
+  const todos = openTodosByPriority();
+  const prItem = (type, x, i) => `<div class="priority-item" data-drag-id="${x.id}"><span class="priority-handle">☷</span><span class="priority-num">${i + 1}</span><span class="priority-title" title="${esc(x.title)}">${esc(x.title)}</span></div>`;
+  return `
+  <section class="layout">
+    <div class="card calendar-card">
+      <div class="calendar-head">
+        <div class="calendar-tools"><button class="icon-btn" onclick="App.moveMonth(-1)" aria-label="이전 달">‹</button>
+          <div class="month-title" id="monthTitle">${y}년 ${m + 1}월</div>
+          <button class="icon-btn" onclick="App.moveMonth(1)" aria-label="다음 달">›</button></div>
+        <button class="btn secondary" onclick="App.goToday()">오늘로 이동</button>
+      </div>
+      <div class="weekdays">${['일', '월', '화', '수', '목', '금', '토'].map(w => `<div class="weekday">${w}</div>`).join('')}</div>
+      <div class="calendar-grid" id="calendarGrid">${cells}</div>
+    </div>
+    <aside class="side-panel">
+      <div class="card"><div class="panel-title"><h3 id="selectedDateTitle">${sd.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</h3>
+        <div class="row"><span class="badge primary">${ev.length}건</span><button class="btn small" onclick="App.openComposer('todo','${ui.selDate}')">＋ 추가</button></div></div>
+        <div class="schedule-stack" id="selectedSchedule">${ev.length ? ev.map(e => scheduleBar(e)).join('') : '<div class="empty">이 날짜에 등록된 일정이 없습니다.</div>'}</div></div>
+      <div class="card"><div class="panel-title"><h3>우선순위</h3><span class="badge primary">드래그</span></div>
+        <div class="muted" style="margin-bottom:8px">항목을 위아래로 끌어 순서를 바꾸면 바로 저장됩니다.</div>
+        <div class="priority-group-title">미완료 할 일</div>
+        <div id="todoPriorityList" class="priority-list">${todos.length ? todos.map((t, i) => prItem('todo', t, i)).join('') : '<div class="empty">미완료 할 일이 없습니다.</div>'}</div>
+        <div class="priority-group-title" style="margin-top:14px">계획</div>
+        <div id="planPriorityList" class="priority-list">${D.plans.length ? D.plans.map((p, i) => prItem('plan', p, i)).join('') : '<div class="empty">계획이 없습니다.</div>'}</div></div>
+    </aside>
+  </section>`;
+}
+function scheduleBar(e) {
+  const t = e.item;
+  const meta = e.kind === 'plan' ? `계획 · ${t.periodStart} ~ ${t.periodEnd} · 예상 ${t.estimatedTime}시간` : `할 일 · ${planTitle(t.planId) || '연결된 계획 없음'} · 예상 ${t.estimatedTime}시간`;
+  return `<div class="schedule-bar ${e.kind} ${e.done ? 'done' : ''}">
+    <div class="schedule-title">${esc(e.title)} ${e.kind === 'plan' ? '<span class="badge orange">계획</span>' : `<span class="badge ${e.done ? 'green' : 'primary'}">${e.done ? '완료' : '할 일'}</span>`}${e.kind === 'todo' && isOverdue(t) ? ' <span class="badge red">지연</span>' : ''}</div>
+    <div class="schedule-meta">${esc(meta)}</div>
+    <div class="row" style="margin-top:8px">
+      ${e.kind === 'todo' ? (e.done ? `<button class="btn small secondary" onclick="App.reopen('${e.id}')">미완료로</button>` : `<button class="btn small green" onclick="App.complete('${e.id}', this)">완료</button>`) : `<button class="btn small" onclick="App.openComposer('todo','${ui.selDate}','${e.id}')">＋ 할 일</button>`}
+      <button class="btn small secondary" onclick="App.${e.kind === 'plan' ? 'editPlan' : 'editTodo'}('${e.id}')">수정</button>
+      <button class="btn small danger" onclick="App.${e.kind === 'plan' ? 'deletePlan' : 'deleteTodo'}('${e.id}')">삭제</button></div></div>`;
 }
 
 function wireDrag(id, getItems, onReorder) {
@@ -338,6 +429,39 @@ function renderAccount() {
 
 // ---------- 동작 ----------
 const App = {
+  selectDate(ds) { ui.selDate = ds; const [y, m] = ds.split('-').map(Number); ui.cal = { y, m: m - 1 }; render(); },
+  moveMonth(n) { const d = new Date(ui.cal.y, ui.cal.m + n, 1); ui.cal = { y: d.getFullYear(), m: d.getMonth() }; render(); },
+  goToday() { ui.tab = 'cal'; this.selectDate(D.today); },
+  openComposer(type = 'todo', ds = null, planId = null) {
+    ui.composerType = type; const day = ds || ui.selDate || D.today;
+    document.getElementById('cm_type').value = type;
+    document.getElementById('composerForm').reset();
+    document.getElementById('cm_type').value = type;
+    document.getElementById('cm_plan').innerHTML = '<option value="">— 없음 —</option>' + D.plans.map(p => `<option value="${p.id}" ${p.id === planId ? 'selected' : ''}>${esc(p.title)}</option>`).join('');
+    document.getElementById('cm_start').value = day; document.getElementById('cm_end').value = day;
+    this.composerType();
+    document.getElementById('composerModal').classList.add('open');
+    setTimeout(() => document.getElementById('cm_title').focus(), 30);
+  },
+  composerType() {
+    const plan = document.getElementById('cm_type').value === 'plan';
+    document.getElementById('cm_planWrap').style.display = plan ? 'none' : 'block';
+    document.getElementById('cm_startLabel').textContent = plan ? '기간 시작일' : '시작일';
+    document.getElementById('cm_endLabel').textContent = plan ? '기간 종료일' : '마감일';
+  },
+  closeComposer() { document.getElementById('composerModal').classList.remove('open'); },
+  backdropClose(e) { if (e.target.id === 'composerModal') this.closeComposer(); },
+  async submitComposer(e) {
+    e.preventDefault();
+    const g = id => document.getElementById(id).value, type = g('cm_type');
+    if (g('cm_end') < g('cm_start')) return alert('종료일이 시작일보다 빠를 수 없습니다.'), false;
+    const base = { title: g('cm_title'), successCriteria: g('cm_success'), estimatedTime: g('cm_est') };
+    const r = type === 'plan'
+      ? await api('POST', '/api/plans/', { ...base, periodStart: g('cm_start'), periodEnd: g('cm_end'), topicTags: splitTags(g('cm_tags')) })
+      : await api('POST', '/api/todos/', { ...base, planId: g('cm_plan') || null, periodStart: g('cm_start') || null, dueDate: g('cm_end'), tags: splitTags(g('cm_tags')) });
+    if (!r.ok) return fail(r), false;
+    this.closeComposer(); await reload(); return false;
+  },
   setTab(t) { ui.tab = t; ui.reviewJump = null; ui.msg = null; render(); },
   toggle(id) { const el = document.getElementById(id); if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'; },
   cancelEdit() { ui.planEditId = ui.todoEditId = null; render(); },
@@ -350,7 +474,7 @@ const App = {
     if (!r.ok) return fail(r), false;
     ui.planEditId = null; await reload(); return false;
   },
-  editPlan(id) { ui.planEditId = id; render(); window.scrollTo(0, 0); },
+  editPlan(id) { ui.tab = 'plans'; ui.planEditId = id; render(); window.scrollTo(0, 0); },
   async deletePlan(id) { if (!confirm('이 계획을 삭제할까요?')) return; const r = await api('DELETE', `/api/plans/${id}/`); if (!r.ok) fail(r); await reload(); },
 
   async submitTodo(e) {
@@ -360,7 +484,7 @@ const App = {
     if (!r.ok) return fail(r), false;
     ui.todoEditId = null; await reload(); return false;
   },
-  editTodo(id) { ui.todoEditId = id; render(); window.scrollTo(0, 0); },
+  editTodo(id) { ui.tab = 'todos'; ui.todoEditId = id; render(); window.scrollTo(0, 0); },
   async deleteTodo(id) { if (!confirm('이 할 일을 삭제할까요?')) return; const r = await api('DELETE', `/api/todos/${id}/`); if (!r.ok) fail(r); await reload(); },
   async complete(id, btn) { if (btn) btn.disabled = true; const r = await api('POST', `/api/todos/${id}/complete/`); if (!r.ok) fail(r); await reload(); },
   async reopen(id) { const r = await api('POST', `/api/todos/${id}/reopen/`); if (!r.ok) fail(r); await reload(); },
