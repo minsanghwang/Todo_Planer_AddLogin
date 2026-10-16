@@ -11,6 +11,7 @@ urlpatterns = [
 
     path("api/me/", api.me_view),
     path("api/data/", api.data_view),
+    path("api/daily/", api.daily_view),
     path("api/export/", api.export_view),
     path("api/import/", api.import_view),
     path("api/account/password/", api.password_view),
@@ -29,8 +30,4 @@ urlpatterns = [
     path("api/todos/<int:pk>/records/", api.record_create),
     path("api/records/<int:pk>/", api.record_detail),
 
-    path("api/experiment/", api.experiment_view),
-    path("api/experiment/fix/", api.experiment_fix),
-    path("api/experiment/days/", api.experiment_day),
-    path("api/experiment/rule-change/", api.experiment_rule_change),
 ]

@@ -1,131 +1,156 @@
-"""5일 실험 규칙 테스트. 하루에 한 건만 만들 수 있어서, '오늘' 날짜를 바꿔 가며 5일을 흉내 낸다."""
+"""계획 수정 이유·하루 완료 기록·전후 비교 테스트."""
 import json
-from contextlib import contextmanager
-from datetime import date
-from unittest import mock
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
 from django.test import TestCase
 
+from .api import plan_snapshot
+from .models import Plan, PlanVersion, Todo
 
-@contextmanager
-def seoul_today(d):
-    with mock.patch("django.utils.timezone.localdate", return_value=d):
-        yield
+KST = ZoneInfo("Asia/Seoul")
 
 
-class ExperimentRules(TestCase):
+def kst(y, m, d, hh=12, mm=0):
+    return datetime(y, m, d, hh, mm, tzinfo=KST)
+
+
+class PlanEditReason(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user("exp.user", password="Test-pw-for-unit-tests-1")
+        self.user = User.objects.create_user("reason.user", password="Test-pw-for-unit-tests-1")
         self.client.force_login(self.user)
+        self.plan = Plan.objects.create(owner=self.user, title="처음 계획", period_start=date(2026, 10, 1),
+                                        period_end=date(2026, 10, 31), estimated_hours=4, success_criteria="주 3회")
 
-    def post(self, url, data):
-        return self.client.post(url, json.dumps(data), content_type="application/json")
+    def put(self, **over):
+        body = {"title": "처음 계획", "periodStart": "2026-10-01", "periodEnd": "2026-10-31",
+                "successCriteria": "주 3회", "estimatedTime": 4, "topicTags": [], "reason": "이유"}
+        body.update(over)
+        return self.client.put(f"/api/plans/{self.plan.id}/", json.dumps(body), content_type="application/json")
 
-    def fix(self):
-        return self.post("/api/experiment/fix/", {"question": "q", "metricName": "m", "unit": "분", "planRule": "처음 규칙"})
-
-    def day(self, d, value, note=""):
-        with seoul_today(d):
-            return self.post("/api/experiment/days/", {"value": value, "note": note})
-
-    def test_settings_fixed_only_once(self):
-        self.assertEqual(self.fix().status_code, 201)
-        self.assertEqual(self.fix().status_code, 400)
-
-    def test_day_needs_fixed_settings_and_value(self):
-        self.assertEqual(self.day(date(2026, 10, 6), 10).status_code, 400)  # 설정 전
-        self.fix()
-        self.assertEqual(self.day(date(2026, 10, 6), "").status_code, 400)  # 값이 빠짐
-        self.assertEqual(self.day(date(2026, 10, 6), "abc").status_code, 400)
-
-    def test_same_date_overwrites_instead_of_duplicating(self):
-        self.fix()
-        self.day(date(2026, 10, 6), 10)
-        r = self.day(date(2026, 10, 6), 25)
-        days = r.json()["days"]
-        self.assertEqual(len(days), 1)
-        self.assertEqual(days[0]["value"], "25.00")
-
-    def test_rule_change_only_between_day2_and_day3(self):
-        self.fix()
-        rc = lambda: self.post("/api/experiment/rule-change/", {"reason": "너무 빡빡해서", "newRule": "새 규칙"})
-        self.assertEqual(rc().status_code, 400)            # 0일 기록 → 불가
-        self.day(date(2026, 10, 6), 10)
-        self.assertEqual(rc().status_code, 400)            # 1일 기록 → 불가
-        self.day(date(2026, 10, 7), 20)
-        # 규칙을 바꾸기 전에는 3일차 기록이 막힌다
-        self.assertEqual(self.day(date(2026, 10, 8), 30).status_code, 400)
-        r = rc()
-        self.assertEqual(r.status_code, 201)
-        change = r.json()["ruleChange"]
-        self.assertEqual(change["day1"]["date"], "2026-10-06")  # 1일차 기록을 정확히 가리킴
-        self.assertEqual(change["day2"]["date"], "2026-10-07")  # 2일차 기록을 정확히 가리킴
-        self.assertEqual(change["beforeRule"], "처음 규칙")
-        self.assertTrue(change["changedAt"])
-        self.assertEqual(rc().status_code, 400)            # 두 번째 변경 불가
-        self.assertEqual(self.day(date(2026, 10, 8), 30).status_code, 201)  # 이제 3일차 가능
-
-    def test_rule_change_requires_reason(self):
-        self.fix()
-        self.day(date(2026, 10, 6), 1)
-        self.day(date(2026, 10, 7), 1)
-        r = self.post("/api/experiment/rule-change/", {"reason": "", "newRule": "새 규칙"})
+    def test_edit_without_reason_is_rejected_and_nothing_changes(self):
+        r = self.put(title="바꾼 계획", reason="  ")
         self.assertEqual(r.status_code, 400)
+        self.plan.refresh_from_db()
+        self.assertEqual(self.plan.title, "처음 계획")
+        self.assertEqual(PlanVersion.objects.count(), 0)
 
-    def test_exactly_five_days_max_and_comparison(self):
-        self.fix()
-        self.day(date(2026, 10, 6), "10")
-        self.day(date(2026, 10, 7), "20")
-        self.post("/api/experiment/rule-change/", {"reason": "r", "newRule": "n"})
-        self.day(date(2026, 10, 8), "30")
-        self.day(date(2026, 10, 9), "40")
-        r = self.day(date(2026, 10, 10), "50")
+    def test_edit_keeps_old_version_time_and_reason(self):
+        r = self.put(estimatedTime=2, reason="하루에 끝내기엔 너무 길어서")
+        self.assertEqual(r.status_code, 200)
+        h = r.json()["history"]
+        self.assertEqual(len(h), 1)                                  # 고치면 이전 버전은 정확히 1건
+        self.assertEqual((h[0]["estimatedTime"], h[0]["reason"]), (4, "하루에 끝내기엔 너무 길어서"))
+        self.assertTrue(h[0]["editedAt"])
+        self.assertEqual(r.json()["estimatedTime"], 2)
+        self.assertEqual(Plan.objects.filter(owner=self.user).count(), 1)   # 계획이 새로 늘지 않는다
+
+    def test_save_without_any_change_is_rejected(self):
+        r = self.put()
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(PlanVersion.objects.count(), 0)
+
+    def test_improvement_note_does_not_add_a_version(self):
+        r = self.client.post(f"/api/plans/{self.plan.id}/notes/", json.dumps({"text": "예상 시간 늘리기"}), content_type="application/json")
         self.assertEqual(r.status_code, 201)
-        self.assertEqual(self.day(date(2026, 10, 11), "60").status_code, 400)  # 6일째는 불가
-        data = self.client.get("/api/experiment/").json()
-        self.assertEqual(len(data["days"]), 5)
-        self.assertEqual(data["total"]["sum"], "150.0")      # 10+20+30+40+50
-        self.assertEqual(data["total"]["average"], "30.0")
-        cmp = data["comparison"]
-        self.assertEqual((cmp["before"]["count"], cmp["before"]["sum"], cmp["before"]["average"]), (2, "30.0", "15.0"))
-        self.assertEqual((cmp["after"]["count"], cmp["after"]["sum"], cmp["after"]["average"]), (3, "120.0", "40.0"))
-        # 전후 비교가 같은 지표·단위·계산 규칙을 쓴다
-        self.assertEqual((cmp["metric"], cmp["unit"]), ("m", "분"))
+        self.assertEqual(r.json()["history"], [])
+        self.assertEqual(len(r.json()["improvementNotes"]), 1)
 
-    def test_rounding_is_half_up_to_one_decimal(self):
-        self.fix()
-        self.day(date(2026, 10, 6), "0.05")   # 0.05 -> 0.1 (ROUND_HALF_UP)
-        self.day(date(2026, 10, 7), "0.10")
-        d = self.client.get("/api/experiment/").json()["total"]
-        self.assertEqual(d["sum"], "0.2")      # 0.15 -> 0.2
-        self.assertEqual(d["average"], "0.1")  # 0.075 -> 0.1
 
-    def test_outlier_is_flagged_but_still_counted(self):
-        self.fix()
-        for i, v in enumerate(["10", "11", "12", "100"]):
-            if i == 2:
-                self.post("/api/experiment/rule-change/", {"reason": "r", "newRule": "n"})
-            self.day(date(2026, 10, 6 + i), v)
-        d = self.client.get("/api/experiment/").json()
-        flags = [x["outlier"] for x in d["days"]]
-        self.assertEqual(flags, [False, False, False, True])
-        self.assertEqual(d["total"]["sum"], "133.0")  # 튀는 값도 계산에 그대로 포함
+class DailyStats(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("daily.user", password="Test-pw-for-unit-tests-2")
+        self.client.force_login(self.user)
+        self.plan = Plan.objects.create(owner=self.user, title="P", period_start=date(2026, 10, 1), period_end=date(2026, 10, 31), estimated_hours=4)
+
+    def done(self, when, title="t", owner=None):
+        return Todo.objects.create(owner=owner or self.user, title=title, due_date=date(2026, 10, 31), status="completed", completed_at=when)
+
+    def daily(self, change=None):
+        return self.client.get("/api/daily/" + (f"?change={change}" if change else "")).json()
+
+    def change_at(self, when, **kw):
+        v = PlanVersion.objects.create(plan=self.plan, owner=self.user, snapshot=plan_snapshot(self.plan), reason="이유")
+        PlanVersion.objects.filter(pk=v.pk).update(edited_at=when)   # 시각을 일부러 정해 둔다
+        self.plan.estimated_hours = 2
+        self.plan.save()
+        return v
+
+    def test_days_sum_average_and_hand_total(self):
+        for d, n in [(6, 1), (7, 2), (8, 3), (9, 3), (10, 1)]:
+            for i in range(n):
+                self.done(kst(2026, 10, d, 9 + i))
+        x = self.daily()
+        self.assertEqual([r["count"] for r in x["days"]], [1, 2, 3, 3, 1])
+        self.assertEqual((x["total"]["sum"], x["total"]["average"], x["total"]["days"]), (10, "2.0", 5))
+        self.assertEqual(sum(x["total"]["values"]), x["total"]["sum"])       # 손으로 더한 값 = 화면 합계
+
+    def test_seoul_midnight_and_missing_days(self):
+        self.done(kst(2026, 10, 7, 0, 30))     # 서울 0시 30분 = 같은 날(10-07)로 센다
+        self.done(kst(2026, 10, 6, 23, 50))    # 앞 날짜
+        self.done(kst(2026, 10, 9, 10))        # 10-08은 기록 없음 -> 0으로 채우지 않는다
+        x = self.daily()
+        self.assertEqual([(r["date"], r["count"]) for r in x["days"]], [("2026-10-06", 1), ("2026-10-07", 1), ("2026-10-09", 1)])
+        self.assertEqual(x["total"]["days"], 3)
+
+    def test_rounding_is_half_up(self):
+        for d, n in [(6, 1), (7, 1), (8, 1), (9, 2)]:    # 합계 5 / 4일 = 1.25
+            for i in range(n):
+                self.done(kst(2026, 10, d, 9 + i))
+        self.assertEqual(self.daily()["total"]["average"], "1.3")
+
+    def test_outlier_flagged_but_counted(self):
+        for d, n in [(6, 1), (7, 1), (8, 1), (9, 10)]:
+            for i in range(n):
+                self.done(kst(2026, 10, d, 9 + i))
+        x = self.daily()
+        self.assertEqual([r["outlier"] for r in x["days"]], [False, False, False, True])
+        self.assertEqual(x["total"]["sum"], 13)
 
     def test_week_start_is_monday(self):
-        self.fix()
-        self.day(date(2026, 10, 7), 1)  # 2026-10-07 은 수요일
-        d = self.client.get("/api/experiment/").json()["days"][0]
-        self.assertEqual(d["weekStart"], "2026-10-05")  # 그 주의 월요일
+        self.done(kst(2026, 10, 7))           # 수요일
+        self.assertEqual(self.daily()["days"][0]["weekStart"], "2026-10-05")
 
-    def test_experiments_are_private_per_account(self):
-        self.fix()
-        self.day(date(2026, 10, 6), 77)
-        other = User.objects.create_user("exp.other", password="Test-pw-for-unit-tests-2")
+    def test_before_after_uses_same_metric_unit_rule(self):
+        for d, n in [(6, 1), (7, 2)]:
+            for i in range(n):
+                self.done(kst(2026, 10, d, 9 + i))
+        self.change_at(kst(2026, 10, 7, 23, 0))      # 2일차 뒤, 3일차 앞
+        for d, n in [(8, 3), (9, 3), (10, 1)]:
+            for i in range(n):
+                self.done(kst(2026, 10, d, 9 + i))
+        x = self.daily()
+        c = x["comparison"]
+        self.assertEqual((c["before"]["days"], c["before"]["sum"], c["before"]["average"]), (2, 3, "1.5"))
+        self.assertEqual((c["after"]["days"], c["after"]["sum"], c["after"]["average"]), (3, 7, "2.3"))
+        self.assertEqual((c["metric"], c["unit"]), (x["metric"], x["unit"]))     # 전후가 같은 지표·단위
+        self.assertEqual(c["before"]["sum"] + c["after"]["sum"], x["total"]["sum"])
+        self.assertEqual([r["side"] for r in x["days"]], ["before", "before", "after", "after", "after"])
+        ch = x["changes"][0]
+        self.assertEqual(ch["reason"], "이유")
+        self.assertTrue(ch["changedAt"])
+        self.assertEqual(ch["diff"][0]["field"], "예상 시간(시간)")
+
+    def test_change_on_morning_of_day3_counts_day3_as_after(self):
+        self.done(kst(2026, 10, 6, 10))
+        self.done(kst(2026, 10, 7, 10))
+        self.change_at(kst(2026, 10, 8, 8, 0))        # 3일차 아침, 할 일을 하기 전
+        self.done(kst(2026, 10, 8, 9))
+        self.assertEqual([r["side"] for r in self.daily()["days"]], ["before", "before", "after"])
+
+    def test_other_accounts_are_not_mixed_in(self):
+        other = User.objects.create_user("daily.other", password="Test-pw-for-unit-tests-3")
+        self.done(kst(2026, 10, 6), owner=other)
+        self.done(kst(2026, 10, 6), title="mine")
+        self.assertEqual(self.daily()["total"]["sum"], 1)
         self.client.force_login(other)
-        data = self.client.get("/api/experiment/").json()
-        self.assertIsNone(data["settings"])
-        self.assertEqual(data["days"], [])
+        self.assertEqual(self.client.get("/api/daily/?change=999999").status_code, 404)   # 남의/없는 변경 번호는 404
+        self.assertEqual(self.daily()["total"]["sum"], 1)
+
+    def test_login_required(self):
+        self.client.logout()
+        self.assertEqual(self.client.get("/api/daily/").status_code, 401)
 
 
 class ImportFromT06(TestCase):

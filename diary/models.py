@@ -19,11 +19,12 @@ class Plan(models.Model):
 
 
 class PlanVersion(models.Model):
-    """계획을 고치기 직전의 모습. 고칠 때마다 한 건씩 쌓인다."""
+    """계획을 고치기 직전의 모습. 고칠 때마다 한 건씩 쌓이고, 고친 시각과 고친 이유가 함께 남는다."""
     plan = models.ForeignKey(Plan, on_delete=models.CASCADE, related_name="versions")
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
     snapshot = models.JSONField()
     edited_at = models.DateTimeField(auto_now_add=True)
+    reason = models.TextField(blank=True, default="")  # 고친 이유 (6번에서 가져온 옛 기록은 비어 있음)
 
 
 class ImprovementNote(models.Model):
@@ -78,38 +79,3 @@ class ExecRecord(models.Model):
                 name="uniq_exec_request_per_owner",
             )
         ]
-
-
-class Experiment(models.Model):
-    """1일차에 한 번 고정하는 5일 실험 설정. 한 계정에 한 건."""
-    owner = models.OneToOneField(User, on_delete=models.CASCADE, related_name="experiment")
-    question = models.CharField(max_length=300)
-    metric_name = models.CharField(max_length=100)
-    unit = models.CharField(max_length=30)
-    plan_rule = models.TextField()
-    fixed_at = models.DateTimeField(auto_now_add=True)
-
-
-class ExperimentDay(models.Model):
-    """하루 한 건. 날짜는 서버가 서울 시간 기준 '오늘'로 정한다(과거 날짜로 채울 수 없음)."""
-    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="experiment_days")
-    date = models.DateField()
-    value = models.DecimalField(max_digits=12, decimal_places=2)
-    note = models.CharField(max_length=300, blank=True, default="")
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        constraints = [models.UniqueConstraint(fields=["owner", "date"], name="uniq_experiment_day_per_owner")]
-        ordering = ["date"]
-
-
-class RuleChange(models.Model):
-    """계획 규칙 변경 기록. 2일차 기록 뒤, 3일차 기록 앞에서만 만들 수 있다."""
-    owner = models.OneToOneField(User, on_delete=models.CASCADE, related_name="rule_change")
-    changed_at = models.DateTimeField(auto_now_add=True)
-    reason = models.TextField()
-    before_rule = models.TextField()
-    after_rule = models.TextField()
-    day1 = models.ForeignKey(ExperimentDay, on_delete=models.PROTECT, related_name="+")
-    day2 = models.ForeignKey(ExperimentDay, on_delete=models.PROTECT, related_name="+")

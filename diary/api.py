@@ -23,7 +23,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from .models import (
-    ExecRecord, Experiment, ExperimentDay, ImprovementNote, Plan, PlanVersion, RuleChange, Todo, TodoVersion,
+    ExecRecord, ImprovementNote, Plan, PlanVersion, Todo, TodoVersion,
 )
 
 SEOUL = ZoneInfo("Asia/Seoul")
@@ -158,7 +158,7 @@ def todo_snapshot(t):
 def ser_plan(p):
     d = plan_snapshot(p)
     d["id"] = str(p.id)
-    d["history"] = [dict(v.snapshot, editedAt=iso(v.edited_at)) for v in p.versions.all()]
+    d["history"] = [dict(v.snapshot, id=str(v.id), editedAt=iso(v.edited_at), reason=v.reason) for v in p.versions.all()]
     d["improvementNotes"] = [
         {"id": str(n.id), "text": n.text, "addedAt": iso(n.created_at)} for n in p.notes.all()
     ]
@@ -242,7 +242,6 @@ def data_view(request):
 @require_login
 def export_view(request):
     out = collect(request.user)
-    out["experiment"] = experiment_payload(request.user)
     out["exportedAt"] = iso(timezone.now())
     out["username"] = request.user.get_username()
     resp = HttpResponse(json.dumps(out, ensure_ascii=False, indent=2), content_type="application/json; charset=utf-8")
@@ -337,10 +336,19 @@ def plan_detail(request, pk):
         p.deleted = True
         p.save()
         return ok()
-    f = plan_fields(body(request))
-    PlanVersion.objects.create(plan=p, owner=request.user, snapshot=plan_snapshot(p))  # 고치기 전 모습 보존
+    d = body(request)
+    f = plan_fields(d)
+    reason = str(d.get("reason", "")).strip()
+    if not reason:
+        raise BadRequest("계획을 고친 이유를 적어 주세요.")
+    if len(reason) > 500:
+        raise BadRequest("고친 이유는 500자 안으로 적어 주세요.")
+    before = plan_snapshot(p)
     for k, v in f.items():
         setattr(p, k, v)
+    if plan_snapshot(p) == before:
+        raise BadRequest("바뀐 내용이 없습니다. 고친 부분이 있어야 저장됩니다.")  # 그대로 저장하면 '이전 버전'만 늘어나므로 막는다
+    PlanVersion.objects.create(plan=p, owner=request.user, snapshot=before, reason=reason)  # 고치기 전 모습 + 시각 + 이유 보존
     p.save()
     return ok(ser_plan(p))
 
@@ -354,7 +362,6 @@ def plan_note(request, pk):
     text = str(body(request).get("text", "")).strip()
     if not text:
         raise BadRequest("내용을 입력해 주세요.")
-    PlanVersion.objects.create(plan=p, owner=request.user, snapshot=plan_snapshot(p))
     ImprovementNote.objects.create(plan=p, owner=request.user, text=text)
     return ok(ser_plan(p), 201)
 
@@ -500,16 +507,25 @@ def record_detail(request, pk):
     return ok()
 
 
-# ------------------------------------------------------------------ 5일 실험
-RULES = {
-    "calc": "일별 값을 그대로 더해 합계를 내고, 합계를 기록된 일수로 나눠 평균을 낸다. 반올림은 마지막에 한 번만 한다.",
-    "missing": "값이 비어 있으면 저장하지 않는다(0으로 채우지 않음). 기록하지 않은 날짜는 '일차'로 세지 않으므로 평균의 분모에도 들어가지 않는다.",
-    "duplicate": "같은 날짜(서울 시간 기준)에는 한 건만 둔다. 같은 날 다시 저장하면 새 기록이 생기지 않고 그날 기록의 값이 덮어써진다.",
-    "outlier": "전체 값의 중앙값보다 3배 넘게 크거나 1/3보다 작은 값은 '튀는 값'으로 표시만 한다. 계산에서 빼지 않고 그대로 포함한다.",
-    "rounding": "합계·평균은 소수 둘째 자리에서 반올림해 소수 첫째 자리까지 보여 준다(0.05는 올림, ROUND_HALF_UP).",
-    "week_start": "주의 시작 요일은 월요일이다.",
+# ------------------------------------------------------------------ 하루 완료 기록 · 계획 규칙 변경 전후 비교
+DAILY = {
+    "question": "계획 규칙을 바꾸기 전과 후에, 하루에 끝내는 할 일의 수가 달라지는가?",
+    "metric": "하루에 완료한 할 일 수",
+    "unit": "개",
+    "rules": {
+        "calc": "하루 값 = 그날(서울 시간) 완료한 할 일의 개수. 날마다의 값을 그대로 더해 합계를 내고, 합계를 값이 있는 날의 수로 나눠 평균을 낸다. 반올림은 마지막에 한 번만 한다.",
+        "missing": "완료한 할 일이 없는 날은 기록이 없는 날로 두고 0으로 채우지 않는다. 그런 날은 일수에도, 평균의 분모에도 들어가지 않는다.",
+        "duplicate": "한 할 일은 한 번만 센다. 완료로 바꿨다가 되돌린 뒤 다시 완료해도 마지막 완료 시각 기준으로 한 건만 센다.",
+        "outlier": "날마다의 값 중 중앙값보다 3배 넘게 크거나 1/3보다 작은 날은 '튀는 값'으로 표시만 한다. 계산에서 빼지 않고 그대로 포함한다.",
+        "rounding": "평균은 소수 둘째 자리에서 반올림해 소수 첫째 자리까지 보여 준다(0.05는 올림, ROUND_HALF_UP). 합계는 정수라 그대로다.",
+        "week_start": "주의 시작 요일은 월요일이다.",
+        "split": "계획을 고친 시각(규칙 변경 시각)보다 그날 첫 완료 시각이 뒤면 '변경 후', 아니면 '변경 전'으로 가른다. 전후 비교에 같은 지표·같은 단위·같은 계산 규칙을 쓴다.",
+    },
 }
-MAX_DAYS = 5
+FIELD_LABELS = {
+    "title": "제목", "periodStart": "기간 시작일", "periodEnd": "기간 종료일", "successCriteria": "성공 기준",
+    "estimatedTime": "예상 시간(시간)", "topicTags": "태그",
+}
 
 
 def r1(x):
@@ -520,122 +536,80 @@ def week_start(d):
     return d - timedelta(days=d.weekday())
 
 
-def stats(days):
-    vals = [d.value for d in days]
-    if not vals:
-        return {"count": 0, "sum": None, "average": None, "values": []}
-    total = sum(vals, Decimal("0"))
-    return {"count": len(vals), "sum": str(r1(total)), "average": str(r1(total / len(vals))),
-            "values": [str(v) for v in vals]}
+def day_stats(counts):
+    if not counts:
+        return {"days": 0, "values": [], "sum": None, "average": None}
+    total = sum(counts)
+    return {"days": len(counts), "values": counts, "sum": total, "average": str(r1(Decimal(total) / len(counts)))}
 
 
-def experiment_payload(user):
-    exp = Experiment.objects.filter(owner=user).first()
-    days = list(ExperimentDay.objects.filter(owner=user).order_by("date"))
-    change = RuleChange.objects.filter(owner=user).select_related("day1", "day2").first()
-    med = median([d.value for d in days]) if days else None
-    out_days = []
-    for i, d in enumerate(days, 1):
-        flag = bool(med and med > 0 and (d.value > med * 3 or d.value < med / 3))
-        out_days.append({"id": str(d.id), "dayNo": i, "date": d.date.isoformat(), "value": str(d.value),
-                         "note": d.note, "weekStart": week_start(d.date).isoformat(), "outlier": flag,
-                         "recordedAt": iso(d.created_at)})
-    payload = {
-        "rules": RULES, "maxDays": MAX_DAYS, "today": timezone.localdate().isoformat(),
-        "settings": None, "days": out_days, "ruleChange": None, "comparison": None,
-        "total": stats(days),
+def show(v):
+    return ", ".join(v) if isinstance(v, list) else ("" if v is None else str(v))
+
+
+def rule_changes(user):
+    """이유를 적고 고친 계획 수정 기록 = 계획 규칙 변경 기록."""
+    versions = list(PlanVersion.objects.filter(owner=user).select_related("plan").order_by("edited_at", "id"))
+    by_plan = {}
+    for v in versions:
+        by_plan.setdefault(v.plan_id, []).append(v)
+    out = []
+    for v in versions:
+        if not v.reason:
+            continue
+        chain = by_plan[v.plan_id]
+        nxt = chain[chain.index(v) + 1] if chain.index(v) + 1 < len(chain) else None
+        after = nxt.snapshot if nxt else plan_snapshot(v.plan)
+        diff = [{"field": label, "before": show(v.snapshot.get(k)), "after": show(after.get(k))}
+                for k, label in FIELD_LABELS.items() if v.snapshot.get(k) != after.get(k)]
+        out.append({"id": str(v.id), "changedAt": iso(v.edited_at), "planTitle": after.get("title") or v.plan.title,
+                    "reason": v.reason, "diff": diff, "_at": v.edited_at})
+    return out
+
+
+def daily_payload(user, change_id=None):
+    done = Todo.objects.filter(owner=user, deleted=False, status="completed", completed_at__isnull=False).order_by("completed_at")
+    by_day = {}
+    for t in done:
+        by_day.setdefault(t.completed_at.astimezone(SEOUL).date(), []).append(t)
+    dates = sorted(by_day)
+    counts = [len(by_day[d]) for d in dates]
+    med = median(counts) if counts else None
+    changes = rule_changes(user)
+    chosen = None
+    if change_id not in (None, ""):
+        chosen = next((c for c in changes if c["id"] == str(change_id)), None)
+        if chosen is None:
+            raise NotFound()
+    elif changes:
+        chosen = changes[0]
+    rows = []
+    for i, d in enumerate(dates, 1):
+        first = min(t.completed_at for t in by_day[d])
+        side = None
+        if chosen:
+            side = "after" if first > chosen["_at"] else "before"
+        n = len(by_day[d])
+        rows.append({"dayNo": i, "date": d.isoformat(), "weekStart": week_start(d).isoformat(), "count": n,
+                     "titles": [t.title for t in by_day[d]], "side": side,
+                     "outlier": bool(med and (n > med * 3 or n < med / 3))})
+    out = {
+        "question": DAILY["question"], "metric": DAILY["metric"], "unit": DAILY["unit"], "rules": DAILY["rules"],
+        "days": rows, "total": day_stats(counts),
+        "changes": [{k: v for k, v in c.items() if k != "_at"} for c in changes],
+        "selectedChange": chosen["id"] if chosen else None, "comparison": None,
     }
-    if exp:
-        payload["settings"] = {"question": exp.question, "metricName": exp.metric_name, "unit": exp.unit,
-                               "planRule": exp.plan_rule, "fixedAt": iso(exp.fixed_at)}
-    if change:
-        payload["ruleChange"] = {
-            "changedAt": iso(change.changed_at), "reason": change.reason, "beforeRule": change.before_rule,
-            "afterRule": change.after_rule, "day1": {"id": str(change.day1_id), "date": change.day1.date.isoformat()},
-            "day2": {"id": str(change.day2_id), "date": change.day2.date.isoformat()},
+    if chosen:
+        out["comparison"] = {
+            "metric": DAILY["metric"], "unit": DAILY["unit"], "calc": DAILY["rules"]["calc"],
+            "changedAt": chosen["changedAt"], "reason": chosen["reason"],
+            "before": day_stats([r["count"] for r in rows if r["side"] == "before"]),
+            "after": day_stats([r["count"] for r in rows if r["side"] == "after"]),
         }
-        payload["comparison"] = {
-            "metric": exp.metric_name, "unit": exp.unit, "calc": RULES["calc"],
-            "before": stats([d for d in days if d.date <= change.day2.date]),
-            "after": stats([d for d in days if d.date > change.day2.date]),
-        }
-    return payload
+    return out
 
 
 @require_login
-def experiment_view(request):
-    return ok(experiment_payload(request.user))
-
-
-@require_login
-@require_http_methods(["POST"])
 @api
-@transaction.atomic
-def experiment_fix(request):
-    if Experiment.objects.filter(owner=request.user).exists():
-        raise BadRequest("이미 고정되었습니다. 1일차에 한 번만 정할 수 있습니다.")
-    if ExperimentDay.objects.filter(owner=request.user).exists():
-        raise BadRequest("기록이 시작된 뒤에는 정할 수 없습니다.")
-    d = body(request)
-    vals = {k: str(d.get(k, "")).strip() for k in ("question", "metricName", "unit", "planRule")}
-    if not all(vals.values()):
-        raise BadRequest("질문·지표·단위·계획 규칙을 모두 적어 주세요.")
-    Experiment.objects.create(owner=request.user, question=vals["question"][:300], metric_name=vals["metricName"][:100],
-                              unit=vals["unit"][:30], plan_rule=vals["planRule"])
-    return ok(experiment_payload(request.user), 201)
-
-
-@require_login
-@require_http_methods(["POST"])
-@api
-@transaction.atomic
-def experiment_day(request):
-    if not Experiment.objects.filter(owner=request.user).exists():
-        raise BadRequest("먼저 질문·지표·단위·계획 규칙을 고정해 주세요.")
-    d = body(request)
-    raw = d.get("value")
-    if raw in (None, ""):
-        raise BadRequest("값이 비어 있습니다. 값 없이는 저장하지 않습니다.")
-    try:
-        value = Decimal(str(raw))
-        if not value.is_finite() or abs(value) > Decimal("9999999999"):
-            raise ValueError
-    except Exception:
-        raise BadRequest("값은 숫자여야 합니다.")
-    value = value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    today = timezone.localdate()  # 서울 기준 오늘. 날짜는 사용자가 정하지 못한다.
-    existing = ExperimentDay.objects.filter(owner=request.user, date=today).first()
-    n = ExperimentDay.objects.filter(owner=request.user).count()
-    if existing:
-        existing.value, existing.note = value, str(d.get("note", ""))[:300]
-        existing.save()
-        return ok(experiment_payload(request.user))
-    if n >= MAX_DAYS:
-        raise BadRequest("5일 기록이 모두 채워졌습니다. 더 만들 수 없습니다.")
-    if n == 2 and not RuleChange.objects.filter(owner=request.user).exists():
-        raise BadRequest("3일차 기록 전에 계획 규칙 변경을 먼저 기록해 주세요.")
-    ExperimentDay.objects.create(owner=request.user, date=today, value=value, note=str(d.get("note", ""))[:300])
-    return ok(experiment_payload(request.user), 201)
-
-
-@require_login
-@require_http_methods(["POST"])
-@api
-@transaction.atomic
-def experiment_rule_change(request):
-    exp = Experiment.objects.filter(owner=request.user).first()
-    if not exp:
-        raise BadRequest("먼저 실험 설정을 고정해 주세요.")
-    if RuleChange.objects.filter(owner=request.user).exists():
-        raise BadRequest("계획 규칙은 한 번만 바꿀 수 있습니다.")
-    days = list(ExperimentDay.objects.filter(owner=request.user).order_by("date"))
-    if len(days) != 2:
-        raise BadRequest("계획 규칙 변경은 2일차 기록 뒤, 3일차 기록 앞에서만 할 수 있습니다. "
-                         f"지금 기록된 날은 {len(days)}일입니다.")
-    d = body(request)
-    reason, new_rule = str(d.get("reason", "")).strip(), str(d.get("newRule", "")).strip()
-    if not reason or not new_rule:
-        raise BadRequest("바꾼 이유와 새 계획 규칙을 모두 적어 주세요.")
-    RuleChange.objects.create(owner=request.user, reason=reason, before_rule=exp.plan_rule, after_rule=new_rule,
-                              day1=days[0], day2=days[1])
-    return ok(experiment_payload(request.user), 201)
+def daily_view(request):
+    return ok(daily_payload(request.user, request.GET.get("change")))

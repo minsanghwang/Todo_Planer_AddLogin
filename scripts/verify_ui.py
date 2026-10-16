@@ -111,15 +111,22 @@ def run(page, ctx):
     after = order()
     check("우선순위 칸에서 드래그하면 순서가 바뀐다", before != after and "책 읽기" in after[0], f"{before} -> {after}")
 
-    # --- 계획 수정 → 이전 버전 보존
+    # --- 계획 수정 → 이전 버전 + 고친 시각 + 고친 이유 보존
     page.locator(".card:has(h3:has-text('운동 습관 만들기')) button:has-text('수정')").click()
     page.fill("#pf_title", "운동 습관 만들기 (수정)")
     page.fill("#pf_success", "주 4회 5km")
+    page.click("button:has-text('수정 저장')")      # 이유를 비워 둔 채로는 저장되지 않는다(필수 칸)
+    page.wait_for_timeout(500)
+    check("고치는 이유를 비워 두면 저장되지 않는다", page.locator("#pf_reason").count() == 1 and page.locator("h3:has-text('운동 습관 만들기 (수정)')").count() == 0)
+    page.fill("#pf_reason", "주 3회는 빡빡해서 주 4회 5km로 기준을 바꿈")
     page.click("button:has-text('수정 저장')")
     page.wait_for_selector("h3:has-text('운동 습관 만들기 (수정)')")
-    page.locator(".link-btn", has_text="이전 버전 보기").first.click()
+    check("고친 계획에 '마지막으로 고친 이유'가 바로 보인다", "주 3회는 빡빡해서" in page.locator(".card:has(h3:has-text('운동 습관 만들기 (수정)'))").inner_text())
+    page.locator(".link-btn", has_text="이전 버전").first.click()
     txt = page.inner_text("#tabContent")
     check("계획을 고쳐도 고치기 전 계획이 남아 있다", "주 3회 5km" in txt and "운동 습관 만들기" in txt)
+    check("이전 버전에 고친 시각과 고친 이유가 함께 보인다", "고친 시각:" in txt and "고친 이유: 주 3회는 빡빡해서" in txt)
+    check("계획을 한 번 고치면 이전 버전은 정확히 1건이다(늘어나지 않음)", "이전 버전·고친 이유 보기 (1건)" in txt and page.locator("h3:has-text('운동 습관 만들기')").count() == 1)
 
     # --- 할 일
     tab(page, "할 일")
@@ -186,23 +193,17 @@ def run(page, ctx):
     page.wait_for_selector("text=예상 시간을 넉넉히 잡기")
     check("돌아보기에서 정한 고칠 점이 다음 계획으로 넘어간다", page.locator(".card:has(h3:has-text('책 읽기')) .history-item", has_text="예상 시간을 넉넉히 잡기").count() == 1)
 
-    # --- 5일 기록 탭
-    tab(page, "5일 기록")
-    page.fill("#ex_q", "아침에 달리면 하루 계획을 더 지킬까?")
-    page.fill("#ex_m", "그날 끝낸 할 일 수")
-    page.fill("#ex_u", "개")
-    page.fill("#ex_r", "아침에 먼저 달린다")
-    page.click("button:has-text('고정하기')")
-    page.wait_for_selector("text=고정된 질문과 지표")
-    page.fill("#dy_v", "3")
-    page.click("button:has-text('오늘 기록 저장')")
-    page.wait_for_selector("text=1일차")
-    page.screenshot(path=str(SHOTS / "five.png"), full_page=True)
-    check("5일 기록: 질문·지표·단위가 고정되고 오늘 기록이 1일차로 저장된다", "개" in page.inner_text("#tabContent") and "1일차" in page.inner_text("#tabContent"))
-    page.fill("#dy_v", "5")
-    page.click("button:has-text('오늘 값 덮어쓰기')")
-    page.wait_for_timeout(400)
-    check("같은 날 다시 저장하면 새 기록이 아니라 덮어쓴다(1/5일 그대로)", "(1/5일)" in page.inner_text("#tabContent") and "5.00" in page.inner_text("#tabContent"))
+    # --- 돌아보기: 하루 완료 기록과 규칙 변경 전후 비교
+    tab(page, "돌아보기")
+    page.wait_for_selector("#dailyTable")
+    page.screenshot(path=str(SHOTS / "review-daily.png"), full_page=True)
+    dt = page.inner_text("#dailyCard")
+    check("돌아보기에 하루 완료 기록(날짜·개수·완료한 할 일)이 보인다", "1일차" in dt and "아침 러닝 5km" in dt and "합계: 1 개" in dt)
+    check("계산·처리 규칙(빠짐·중복·튐·반올림·주 시작)이 화면에 적혀 있다", all(k in dt for k in ["값이 빠졌을 때", "값이 중복될 때", "값이 유난히 튈 때", "반올림", "주 시작 요일"]))
+    rc = page.inner_text("#ruleChangeList")
+    check("계획 규칙을 바꾼 시각·이유·바뀐 내용이 보인다", "주 3회는 빡빡해서" in rc and "성공 기준: 주 3회 5km → 주 4회 5km" in rc and "202" in rc)
+    cp = page.inner_text("#compareTable")
+    check("전후 비교가 같은 지표·단위로 나온다(변경 전 0일 / 변경 후 1일)", "변경 전" in cp and "변경 후" in cp and "같은 지표" in page.inner_text(".content") and "단위(개)" in page.inner_text(".content"))
 
     # --- 새로고침 후에도 그대로
     page.reload()
@@ -211,11 +212,12 @@ def run(page, ctx):
     t1 = page.inner_text("#tabContent")
     tab(page, "할 일")
     t2 = page.inner_text("#tabContent")
-    tab(page, "5일 기록")
+    tab(page, "돌아보기")
+    page.wait_for_selector("#dailyTable")
     t3 = page.inner_text("#tabContent")
     check("새로고침해도 계획·고칠 점·수정 전 버전이 그대로다", "운동 습관 만들기 (수정)" in t1 and "예상 시간을 넉넉히 잡기" in t1 and "(1건)" in t1)
     check("새로고침해도 할 일·완료 상태·실행 기록 수가 그대로다", "아침 러닝 5km" in t2 and "독서 30분" in t2 and "완료" in t2 and "실행 기록 보기/추가 (1건)" in t2)
-    check("새로고침해도 5일 기록(질문·값)이 그대로다", "아침에 달리면 하루 계획을 더 지킬까?" in t3 and "5.00" in t3)
+    check("새로고침해도 하루 완료 기록과 규칙 변경 기록이 그대로다", "아침 러닝 5km" in t3 and "주 3회는 빡빡해서" in t3)
     # 우선순위 순서도 유지
     tab(page, "계획")
     check("새로고침해도 드래그로 바꾼 우선순위 순서가 그대로다", order()[0].find("책 읽기") >= 0)
@@ -233,8 +235,8 @@ def run(page, ctx):
     with page.expect_download() as dl:
         page.click("a:has-text('JSON 파일 내보내기')")
     data = json.loads(Path(dl.value.path()).read_text(encoding="utf-8"))
-    check("내 자료 전체가 JSON 파일 하나로 내보내진다", {"plans", "todos", "execRecords", "experiment"} <= set(data)
-          and len(data["plans"]) == 2 and len(data["todos"]) == 2 and len(data["execRecords"]) == 1 and len(data["experiment"]["days"]) == 1)
+    check("내 자료 전체가 JSON 파일 하나로 내보내진다", {"plans", "todos", "execRecords"} <= set(data)
+          and len(data["plans"]) == 2 and len(data["todos"]) == 2 and len(data["execRecords"]) == 1 and any(h.get("reason") for p in data["plans"] for h in p["history"]))
 
     # --- 캘린더 (T06 모양)
     tab(page, "캘린더")

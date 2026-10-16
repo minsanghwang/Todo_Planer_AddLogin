@@ -409,7 +409,7 @@ def run():
         res["del_ok"] = who.request("DELETE", f"/api/todos/{tmp}/", log=f"[{label_who}] 내 할 일 삭제 (성공)")
         res["edit_no"] = who.request("PUT", f"/api/todos/{ids_theirs['todo']}/", json_body={"title": "남이 고친 제목", "dueDate": "2026-10-23", "estimatedTime": 9},
                                      log=f"[{label_who}] {label_whom}의 할 일 수정 (거절)")
-        res["edit_plan_no"] = who.request("PUT", f"/api/plans/{ids_theirs['plan']}/", json_body={"title": "남이 고친 계획", "periodStart": "2026-10-01", "periodEnd": "2026-10-02", "estimatedTime": 9},
+        res["edit_plan_no"] = who.request("PUT", f"/api/plans/{ids_theirs['plan']}/", json_body={"title": "남이 고친 계획", "periodStart": "2026-10-01", "periodEnd": "2026-10-02", "estimatedTime": 9, "reason": "남의 계획을 고쳐 보려는 시도"},
                                           log=f"[{label_who}] {label_whom}의 계획 수정 (거절)")
         res["del_no"] = who.request("DELETE", f"/api/todos/{ids_theirs['todo']}/", log=f"[{label_who}] {label_whom}의 할 일 삭제 (거절)")
         res["del_plan_no"] = who.request("DELETE", f"/api/plans/{ids_theirs['plan']}/", log=f"[{label_who}] {label_whom}의 계획 삭제 (거절)")
@@ -515,7 +515,7 @@ def run():
     ej = exp.json()
     say(f"내보내기 응답: {exp.status}, Content-Disposition `{dict((k.lower(), v) for k, v in exp.headers).get('content-disposition')}`, "
         f"키 {sorted(ej.keys())}")
-    check("내 자료 전체가 파일 하나(JSON)로 내보내진다", exp.status == 200 and {"plans", "todos", "execRecords", "experiment"} <= set(ej))
+    check("내 자료 전체가 파일 하나(JSON)로 내보내진다", exp.status == 200 and {"plans", "todos", "execRecords"} <= set(ej))
     check("내보내기에 B의 자료·비밀번호 정보가 없다", "B계정" not in exp.body and "pbkdf2" not in exp.body and "password" not in exp.body.lower())
 
     Dc = Client("D")

@@ -3,9 +3,9 @@ const root = document.getElementById('tabContent');
 const tabsEl = document.getElementById('tabs');
 const msgEl = document.getElementById('msg');
 let D = { plans: [], todos: [], execRecords: [], today: '' };
-let EXP = null;
+let DAILY = null;
 let ui = {
-  tab: 'cal', cal: null, selDate: null, composerType: 'todo', planEditId: null, todoEditId: null, expandedTodo: null, reviewJump: null, msg: null,
+  tab: 'cal', dailyChange: '', cal: null, selDate: null, composerType: 'todo', planEditId: null, todoEditId: null, expandedTodo: null, reviewJump: null, msg: null,
   filter: { status: 'all', tag: '', planId: '', search: '', sortBy: 'dueDate', sortDir: 'asc' },
   reviewScope: { type: 'all', value: '' }, refocus: null,
 };
@@ -27,9 +27,10 @@ async function api(method, url, body) {
 function fail(r) { alert((r.data && r.data.detail) || '요청을 처리하지 못했습니다.'); }
 
 async function reload() {
-  const [a, b] = await Promise.all([api('GET', '/api/data/'), api('GET', '/api/experiment/')]);
+  const [a, b] = await Promise.all([api('GET', '/api/data/'), api('GET', '/api/daily/' + (ui.dailyChange ? '?change=' + encodeURIComponent(ui.dailyChange) : ''))]);
   if (a.ok) D = a.data;
-  if (b.ok) EXP = b.data;
+  if (b.ok) DAILY = b.data;
+  else if (b.status === 404) { ui.dailyChange = ''; }
   render();
 }
 
@@ -69,13 +70,12 @@ function filteredTodos() {
 }
 
 // ---------- 렌더 ----------
-const TABS = [['cal', '▦ 캘린더'], ['plans', '계획'], ['todos', '할 일'], ['review', '◷ 돌아보기'], ['exp', '5일 기록'], ['account', '내 계정']];
+const TABS = [['cal', '▦ 캘린더'], ['plans', '계획'], ['todos', '할 일'], ['review', '◷ 돌아보기'], ['account', '내 계정']];
 const TITLES = {
   cal: ['이번 달을 한눈에', '계획과 할 일을 같은 화면에서 관리해 보세요.'],
   plans: ['계획', '기간·성공 기준·예상 시간을 담아 계획을 세웁니다.'],
   todos: ['할 일', '마감일·태그·실행 기록으로 하루를 쌓아 갑니다.'],
   review: ['돌아보기', '숫자를 눌러 어떤 할 일에서 나왔는지 확인하세요.'],
-  exp: ['5일 기록', '질문과 지표를 정하고 5일을 기록합니다.'],
   account: ['내 계정', '내보내기·비밀번호·계정 삭제'],
 };
 function render() {
@@ -86,7 +86,7 @@ function render() {
   document.getElementById('pageSub').textContent = sub;
   renderSidebar();
   msgEl.innerHTML = ui.msg ? `<div class="okmsg">${esc(ui.msg)}</div>` : '';
-  root.innerHTML = { cal: renderCal, plans: renderPlans, todos: renderTodos, review: renderReview, exp: renderExp, account: renderAccount }[ui.tab]();
+  root.innerHTML = { cal: renderCal, plans: renderPlans, todos: renderTodos, review: renderReview, account: renderAccount }[ui.tab]();
   if (ui.tab === 'cal') {
     wireDrag('todoPriorityList', openTodosByPriority, ids => App.reorder('todos', ids));
     wireDrag('planPriorityList', () => D.plans, ids => App.reorder('plans', ids));
@@ -203,9 +203,10 @@ function renderPlans() {
       <div class="field"><label>주제 태그 (쉼표로 구분, 예: 운동, 러닝)</label><input id="pf_tags" value="${esc((ed?.topicTags || []).join(', '))}"></div>
       <div class="field"><label>성공 기준 (직접 작성)</label><textarea id="pf_success">${esc(ed?.successCriteria || '')}</textarea></div>
       <div class="field"><label>예상 시간 (시간 단위)</label><input type="number" step="0.5" min="0" id="pf_est" required value="${ed?.estimatedTime ?? ''}"></div>
+      ${ed ? `<div class="field"><label>고치는 이유 (필수 · 돌아보기의 규칙 변경 기록에 시각과 함께 남습니다)</label><textarea id="pf_reason" required maxlength="500" placeholder="예: 하루에 끝내기엔 예상 시간이 너무 길어서 2시간으로 줄임"></textarea></div>` : ''}
       <div class="row"><button class="btn" type="submit">${ed ? '수정 저장' : '계획 추가'}</button>
         ${ed ? '<button type="button" class="btn secondary" onclick="App.cancelEdit()">취소</button>' : ''}</div>
-      <p class="muted">※ 계획을 고쳐도 고치기 전 모습은 "이전 버전"으로 서버에 남습니다.</p>
+      <p class="muted">※ 계획을 고쳐도 고치기 전 모습은 "이전 버전"으로, 고친 시각·이유와 함께 서버에 남습니다. 바뀐 내용이 없으면 저장되지 않습니다.</p>
     </form></div>
   <div class="card"><h3>우선순위 정렬 (드래그해서 순서 변경)</h3>
     ${D.plans.length === 0 ? '<div class="empty">계획이 없습니다.</div>' : `<div id="planDragList">${D.plans.map(p => `
@@ -216,11 +217,14 @@ function renderPlans() {
 }
 function planCard(p) {
   const n = D.todos.filter(t => t.planId === p.id).length;
+  const last = (p.history || []).length ? p.history[p.history.length - 1] : null;
   const hist = (p.history || []).length ? `
-    <div class="link-btn" onclick="App.toggle('hist_${p.id}')" style="margin-top:6px;">이전 버전 보기 (${p.history.length}건)</div>
+    <div class="notice" style="margin-top:8px"><b>마지막으로 고친 이유:</b> ${esc(last.reason || '(이유 없음 · 6번에서 가져온 기록)')} <span class="muted">· ${fmtDT(last.editedAt)}</span></div>
+    <div class="link-btn" onclick="App.toggle('hist_${p.id}')" style="margin-top:6px;">이전 버전·고친 이유 보기 (${p.history.length}건)</div>
     <div id="hist_${p.id}" style="display:none;margin-top:6px;">${p.history.slice().reverse().map(h => `
       <div class="history-item"><b>${esc(h.title)}</b> · ${h.periodStart}~${h.periodEnd} · 성공기준: ${esc(h.successCriteria || '-')} · 예상 ${h.estimatedTime}h
-      <div class="muted">고친 시각: ${fmtDT(h.editedAt)}</div></div>`).join('')}</div>` : '';
+      <div class="muted">고친 시각: ${fmtDT(h.editedAt)}</div>
+      <div><b>고친 이유:</b> ${esc(h.reason || '(이유 없음 · 6번에서 가져온 기록)')}</div></div>`).join('')}</div>` : '';
   const notes = (p.improvementNotes || []).length ? `<div class="muted" style="margin-top:6px;"><b>돌아보기에서 넘어온 고칠 점</b></div>
     ${p.improvementNotes.map(x => `<div class="history-item">${esc(x.text)}</div>`).join('')}` : '';
   return `<div class="card"><div class="title-row"><div>
@@ -340,6 +344,7 @@ function renderReview() {
   <div class="card"><h3>계획별 할 일 수 (지우지 않은 할 일만)</h3>
     ${D.plans.length === 0 ? '<div class="empty">계획이 없습니다.</div>' : `<table class="t"><tr><th>계획</th><th>딸린 할 일</th><th>완료</th></tr>
       ${D.plans.map(p => { const ts = D.todos.filter(t => t.planId === p.id); return `<tr><td>${esc(p.title)}</td><td>${ts.length}건</td><td>${ts.filter(t => t.status === 'completed').length}건</td></tr>`; }).join('')}</table>`}</div>
+  ${renderDaily()}
   ${j ? `<div class="card"><h3>${esc(j.label)} (${j.items.length}건)</h3>
     ${j.items.length === 0 ? '<div class="empty">해당하는 할 일이 없습니다.</div>' : j.items.map(t => `<div class="history-item"><b>${esc(t.title)}</b> · 마감 ${fmtDate(t.dueDate)} · ${t.status === 'completed' ? '완료' : '진행 중'}${t.completedAt ? ' · 완료 ' + fmtDT(t.completedAt) : ''}</div>`).join('')}
     <button class="btn small secondary" style="margin-top:8px" onclick="App.closeJump()">닫기</button></div>` : ''}
@@ -349,66 +354,47 @@ function renderReview() {
     <button class="btn" onclick="App.submitNote()">다음 계획에 반영</button></div>`;
 }
 
-// ---- 5일 기록 ----
-function renderExp() {
-  if (!EXP) return '<div class="empty">불러오는 중...</div>';
-  const R = EXP.rules, S = EXP.settings;
-  const rulesHtml = `<ul class="rules">${[['계산', R.calc], ['값이 빠졌을 때', R.missing], ['값이 중복될 때', R.duplicate], ['값이 유난히 튈 때', R.outlier], ['반올림', R.rounding], ['주 시작 요일', R.week_start]].map(([k, v]) => `<li><b>${k}:</b> ${esc(v)}</li>`).join('')}</ul>`;
-  if (!S) return `<div class="card"><h3>1일차: 질문·지표·계획 규칙 정하기</h3>
-    <div class="notice">한 번 고정하면 바꿀 수 없습니다. 사람이 읽는 문장으로 적어 주세요.</div>
-    <form onsubmit="return App.fixExp(event)">
-      <div class="field"><label>답하려는 질문 (한 문장)</label><input id="ex_q" required></div>
-      <div class="grid2"><div class="field"><label>관찰 지표 (하나)</label><input id="ex_m" required></div>
-        <div class="field"><label>단위</label><input id="ex_u" required></div></div>
-      <div class="field"><label>계획 규칙 (지금 쓰는 규칙)</label><textarea id="ex_r" required></textarea></div>
-      <button class="btn" type="submit">고정하기</button></form>
-    <hr class="sep"><b>고정된 계산·처리 규칙 (코드가 이대로 계산합니다)</b>${rulesHtml}</div>`;
-  const n = EXP.days.length, canRule = n === 2 && !EXP.ruleChange, full = n >= EXP.maxDays;
-  const todayDone = EXP.days.some(d => d.date === EXP.today);
-  const blockedByRule = n === 2 && !EXP.ruleChange && !todayDone;
-  const sum = EXP.total;
-  const cmp = EXP.comparison;
+
+// ---- 하루 완료 기록 · 계획 규칙 변경 전후 비교 ----
+function renderDaily() {
+  if (!DAILY) return '';
+  const X = DAILY, u = esc(X.unit), R = X.rules;
+  const rules = `<ul class="rules">${[['계산', R.calc], ['값이 빠졌을 때', R.missing], ['값이 중복될 때', R.duplicate], ['값이 유난히 튈 때', R.outlier], ['반올림', R.rounding], ['주 시작 요일', R.week_start], ['전·후 가르는 기준', R.split]].map(([k, v]) => `<li><b>${k}:</b> ${esc(v)}</li>`).join('')}</ul>`;
+  const sideLabel = x => x === 'before' ? '변경 전' : x === 'after' ? '변경 후' : '';
+  const rows = X.days.length === 0 ? '<div class="empty">아직 완료한 할 일이 없습니다. 할 일을 완료하면 그날(서울 시간)의 값으로 쌓입니다.</div>' : `
+    <table class="t" id="dailyTable"><tr><th>일차</th><th>날짜(서울)</th><th>주 시작(월)</th><th>${esc(X.metric)} (${u})</th><th>완료한 할 일</th><th></th></tr>
+    ${X.days.map(d => `<tr><td>${d.dayNo}일차</td><td>${d.date}</td><td>${d.weekStart}</td><td><b>${d.count}</b></td><td>${d.titles.map(esc).join(', ')}</td>
+      <td>${d.outlier ? '<span class="flag">튀는 값</span> ' : ''}${d.side ? `<span class="badge ${d.side === 'after' ? 'green' : 'orange'}">${sideLabel(d.side)}</span>` : ''}</td></tr>`).join('')}</table>
+    <div style="margin-top:8px"><b>합계:</b> ${X.total.sum ?? '-'} ${u} · <b>평균:</b> ${X.total.average ?? '-'} ${u} · <b>기록된 날:</b> ${X.total.days}일
+      <div class="muted">손으로 더해 보기: ${X.total.values.length ? X.total.values.join(' + ') + ' = ' + X.total.sum : '-'}</div></div>`;
+  const ch = X.changes.length === 0 ? '<div class="empty">아직 계획 규칙을 바꾼 기록이 없습니다. 계획 탭에서 계획을 고치며 이유를 적으면 여기에 시각과 함께 쌓입니다.</div>' : `
+    ${X.changes.length > 1 ? `<div class="field"><label>비교 기준으로 삼을 변경</label><select id="dailyChangeSel" onchange="App.setDailyChange(this.value)">
+      ${X.changes.map(c => `<option value="${c.id}" ${c.id === X.selectedChange ? 'selected' : ''}>${fmtDT(c.changedAt)} · ${esc(c.planTitle)}</option>`).join('')}</select></div>` : ''}
+    <div id="ruleChangeList">${X.changes.map(c => `<div class="history-item ${c.id === X.selectedChange ? 'picked' : ''}">
+      <div><b>${fmtDT(c.changedAt)}</b> · 계획 「${esc(c.planTitle)}」${c.id === X.selectedChange ? ' <span class="badge primary">비교 기준</span>' : ''}</div>
+      <div><b>바꾼 이유:</b> ${esc(c.reason)}</div>
+      ${c.diff.map(d => `<div class="muted">${esc(d.field)}: ${esc(d.before || '-')} → ${esc(d.after || '-')}</div>`).join('')}</div>`).join('')}</div>`;
+  const cmp = X.comparison;
+  const cmpHtml = cmp ? `<div class="muted">같은 지표(${esc(cmp.metric)}) · 같은 단위(${esc(cmp.unit)}) · 같은 계산 규칙으로 비교합니다. 기준 시각: ${fmtDT(cmp.changedAt)}</div>
+    <div id="comparePoints" class="muted">변경 앞의 기록: ${X.days.filter(d => d.side === 'before').map(d => `${d.dayNo}일차(${d.date})`).join(', ') || '없음'} · 변경 뒤의 기록: ${X.days.filter(d => d.side === 'after').map(d => `${d.dayNo}일차(${d.date})`).join(', ') || '없음'}</div>
+    <table class="t" id="compareTable"><tr><th></th><th>일수</th><th>날마다의 값</th><th>합계</th><th>평균</th></tr>
+      <tr><td>변경 전</td><td>${cmp.before.days}</td><td>${cmp.before.values.join(', ') || '-'}</td><td>${cmp.before.sum ?? '-'}</td><td>${cmp.before.average ?? '-'}</td></tr>
+      <tr><td>변경 후</td><td>${cmp.after.days}</td><td>${cmp.after.values.join(', ') || '-'}</td><td>${cmp.after.sum ?? '-'}</td><td>${cmp.after.average ?? '-'}</td></tr></table>` : '<div class="muted">계획 규칙을 바꾼 기록이 생기면 전후 비교가 나타납니다.</div>';
   return `
-  <div class="card"><h3>고정된 질문과 지표</h3>
-    <div><b>질문:</b> ${esc(S.question)}</div>
-    <div><b>지표:</b> ${esc(S.metricName)} (단위: ${esc(S.unit)})</div>
-    <div><b>계획 규칙(처음):</b> ${esc(S.planRule)}</div>
-    <div class="muted">고정한 시각: ${fmtDT(S.fixedAt)}</div>
-    <hr class="sep"><b>계산·처리 규칙</b>${rulesHtml}</div>
-  <div class="card"><h3>일별 기록 (${n}/${EXP.maxDays}일)</h3>
-    ${n === 0 ? '<div class="empty">아직 기록이 없습니다.</div>' : `<table class="t"><tr><th>일차</th><th>날짜(서울)</th><th>주 시작(월)</th><th>값 (${esc(S.unit)})</th><th>메모</th><th></th></tr>
-      ${EXP.days.map(d => `<tr><td>${d.dayNo}일차</td><td>${d.date}</td><td>${d.weekStart}</td><td>${esc(d.value)}</td><td>${esc(d.note)}</td><td>${d.outlier ? '<span class="flag">튀는 값</span>' : ''}</td></tr>`).join('')}</table>`}
-    <div style="margin-top:8px"><b>합계:</b> ${sum.sum ?? '-'} ${esc(S.unit)} · <b>평균:</b> ${sum.average ?? '-'} ${esc(S.unit)}
-      <div class="muted">손으로 더해 보기: ${sum.values.length ? sum.values.join(' + ') + ' = ' + sum.sum : '-'} / ${sum.count}일</div></div>
-    ${full ? '<div class="okmsg">5일 기록이 모두 채워졌습니다.</div>' : blockedByRule ? '<div class="notice">3일차 기록 전에 아래에서 계획 규칙 변경을 먼저 기록해야 합니다.</div>' : `
-    <form onsubmit="return App.addDay(event)" style="margin-top:10px">
-      <div class="grid2"><div class="field"><label>오늘(${EXP.today})의 값 (${esc(S.unit)})</label><input id="dy_v" type="number" step="0.01" required></div>
-        <div class="field"><label>메모 (선택)</label><input id="dy_n"></div></div>
-      <button class="btn" type="submit">${todayDone ? '오늘 값 덮어쓰기' : '오늘 기록 저장'}</button>
-      <span class="muted">날짜는 서버가 서울 시간 기준 오늘로 정합니다. 같은 날 다시 저장하면 한 건만 남습니다.</span></form>`}</div>
-  <div class="card"><h3>계획 규칙 변경 (2일차 뒤, 3일차 앞)</h3>
-    ${EXP.ruleChange ? `<div><b>바꾼 시각:</b> ${fmtDT(EXP.ruleChange.changedAt)}</div>
-      <div><b>이유:</b> ${esc(EXP.ruleChange.reason)}</div>
-      <div><b>바꾸기 전:</b> ${esc(EXP.ruleChange.beforeRule)}</div>
-      <div><b>바꾼 뒤:</b> ${esc(EXP.ruleChange.afterRule)}</div>
-      <div class="muted">가리키는 기록: 1일차(${EXP.ruleChange.day1.date}) · 2일차(${EXP.ruleChange.day2.date}) — 이 두 기록 뒤, 3일차 기록 앞에 놓임</div>`
-    : canRule ? `<form onsubmit="return App.ruleChange(event)">
-      <div class="field"><label>바꾼 이유</label><textarea id="rc_reason" required></textarea></div>
-      <div class="field"><label>새 계획 규칙 (하나만 바꾸기)</label><textarea id="rc_rule" required></textarea></div>
-      <button class="btn" type="submit">규칙 변경 기록</button></form>`
-    : '<div class="muted">2일차 기록이 끝나면 여기서 한 번 기록할 수 있습니다.</div>'}</div>
-  ${cmp ? `<div class="card"><h3>규칙 변경 전후 비교</h3>
-    <div class="muted">같은 지표(${esc(cmp.metric)}) · 같은 단위(${esc(cmp.unit)}) · 같은 계산 규칙으로 비교합니다.</div>
-    <table class="t"><tr><th></th><th>일수</th><th>값들</th><th>합계</th><th>평균</th></tr>
-      <tr><td>변경 전 (1~2일차)</td><td>${cmp.before.count}</td><td>${cmp.before.values.join(', ')}</td><td>${cmp.before.sum ?? '-'}</td><td>${cmp.before.average ?? '-'}</td></tr>
-      <tr><td>변경 후 (3일차~)</td><td>${cmp.after.count}</td><td>${cmp.after.values.join(', ') || '-'}</td><td>${cmp.after.sum ?? '-'}</td><td>${cmp.after.average ?? '-'}</td></tr></table></div>` : ''}`;
+  <div class="card" id="dailyCard"><h3>하루 완료 기록 (실제로 쓴 날)</h3>
+    <div><b>질문:</b> ${esc(X.question)}</div>
+    <div><b>지표:</b> ${esc(X.metric)} (단위: ${u})</div>
+    <div style="margin:8px 0"><b>계산·처리 규칙</b>${rules}</div>
+    ${rows}</div>
+  <div class="card"><h3>계획 규칙을 바꾼 기록</h3>${ch}</div>
+  <div class="card"><h3>규칙 변경 전후 비교</h3>${cmpHtml}</div>`;
 }
 
 // ---- 내 계정 ----
 function renderAccount() {
   return `
   <div class="card"><h3>내 자료 내보내기</h3>
-    <p class="muted">계획·할 일·실행 기록·5일 기록 전체를 JSON 파일 하나로 받습니다. 비밀번호 정보는 들어 있지 않습니다.</p>
+    <p class="muted">계획(고친 이유 포함)·할 일·실행 기록 전체를 JSON 파일 하나로 받습니다. 비밀번호 정보는 들어 있지 않습니다.</p>
     <a class="btn" href="/api/export/" download>JSON 파일 내보내기</a></div>
   <div class="card"><h3>6번 다이어리 자료 가져오기</h3>
     <p class="muted">6번에서 내보낸 JSON 파일을 고르면 내 계정으로 옮겨집니다.</p>
@@ -421,7 +407,7 @@ function renderAccount() {
       <button class="btn" type="submit">변경</button>
       <span class="muted">바꾸면 다른 곳에서 로그인해 둔 세션은 모두 끊깁니다.</span></form></div>
   <div class="card"><h3>계정 삭제</h3>
-    <div class="notice">계정을 지우면 내 계획·할 일·실행 기록·5일 기록이 서버에서 <b>모두 함께 영구 삭제</b>되며 되돌릴 수 없습니다. 필요하면 먼저 내보내기를 하세요.</div>
+    <div class="notice">계정을 지우면 내 계획·할 일·실행 기록(고친 이유 포함)이 서버에서 <b>모두 함께 영구 삭제</b>되며 되돌릴 수 없습니다. 필요하면 먼저 내보내기를 하세요.</div>
     <form onsubmit="return App.deleteAccount(event)">
       <div class="field"><label>비밀번호 확인</label><input type="password" id="del_pw" autocomplete="current-password" required></div>
       <button class="btn danger" type="submit">계정과 자료 삭제</button></form></div>`;
@@ -470,8 +456,10 @@ const App = {
   async submitPlan(e) {
     e.preventDefault();
     const body = { title: pf_title.value, periodStart: pf_start.value, periodEnd: pf_end.value, topicTags: splitTags(pf_tags.value), successCriteria: pf_success.value, estimatedTime: pf_est.value };
+    if (ui.planEditId) body.reason = pf_reason.value;
+    const btn = e.target.querySelector('button[type=submit]'); btn.disabled = true;  // 연타해도 한 번만 보낸다
     const r = ui.planEditId ? await api('PUT', `/api/plans/${ui.planEditId}/`, body) : await api('POST', '/api/plans/', body);
-    if (!r.ok) return fail(r), false;
+    if (!r.ok) { btn.disabled = false; return fail(r), false; }
     ui.planEditId = null; await reload(); return false;
   },
   editPlan(id) { ui.tab = 'plans'; ui.planEditId = id; render(); window.scrollTo(0, 0); },
@@ -518,24 +506,7 @@ const App = {
     ui.msg = '고칠 점이 선택한 계획으로 넘어갔습니다.'; ui.tab = 'plans'; await reload();
   },
 
-  async fixExp(e) {
-    e.preventDefault();
-    const r = await api('POST', '/api/experiment/fix/', { question: ex_q.value, metricName: ex_m.value, unit: ex_u.value, planRule: ex_r.value });
-    if (!r.ok) return fail(r), false;
-    await reload(); return false;
-  },
-  async addDay(e) {
-    e.preventDefault();
-    const r = await api('POST', '/api/experiment/days/', { value: dy_v.value, note: dy_n.value });
-    if (!r.ok) return fail(r), false;
-    await reload(); return false;
-  },
-  async ruleChange(e) {
-    e.preventDefault();
-    const r = await api('POST', '/api/experiment/rule-change/', { reason: rc_reason.value, newRule: rc_rule.value });
-    if (!r.ok) return fail(r), false;
-    await reload(); return false;
-  },
+  async setDailyChange(id) { ui.dailyChange = id; await reload(); },
 
   async importFile() {
     const f = document.getElementById('imp_file').files[0];
