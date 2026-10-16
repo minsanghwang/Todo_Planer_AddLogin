@@ -1,20 +1,11 @@
-"""계획 수정 이유·하루 완료 기록·전후 비교 테스트."""
+"""계획 수정 이유·6번 JSON 가져오기 테스트."""
 import json
-from datetime import date, datetime
-from zoneinfo import ZoneInfo
+from datetime import date
 
 from django.contrib.auth.models import User
 from django.test import TestCase
 
-from .api import plan_snapshot
-from .models import Plan, PlanVersion, Todo
-
-KST = ZoneInfo("Asia/Seoul")
-
-
-def kst(y, m, d, hh=12, mm=0):
-    return datetime(y, m, d, hh, mm, tzinfo=KST)
-
+from .models import Plan, PlanVersion
 
 class PlanEditReason(TestCase):
     def setUp(self):
@@ -56,101 +47,6 @@ class PlanEditReason(TestCase):
         self.assertEqual(r.status_code, 201)
         self.assertEqual(r.json()["history"], [])
         self.assertEqual(len(r.json()["improvementNotes"]), 1)
-
-
-class DailyStats(TestCase):
-    def setUp(self):
-        self.user = User.objects.create_user("daily.user", password="Test-pw-for-unit-tests-2")
-        self.client.force_login(self.user)
-        self.plan = Plan.objects.create(owner=self.user, title="P", period_start=date(2026, 10, 1), period_end=date(2026, 10, 31), estimated_hours=4)
-
-    def done(self, when, title="t", owner=None):
-        return Todo.objects.create(owner=owner or self.user, title=title, due_date=date(2026, 10, 31), status="completed", completed_at=when)
-
-    def daily(self, change=None):
-        return self.client.get("/api/daily/" + (f"?change={change}" if change else "")).json()
-
-    def change_at(self, when, **kw):
-        v = PlanVersion.objects.create(plan=self.plan, owner=self.user, snapshot=plan_snapshot(self.plan), reason="이유")
-        PlanVersion.objects.filter(pk=v.pk).update(edited_at=when)   # 시각을 일부러 정해 둔다
-        self.plan.estimated_hours = 2
-        self.plan.save()
-        return v
-
-    def test_days_sum_average_and_hand_total(self):
-        for d, n in [(6, 1), (7, 2), (8, 3), (9, 3), (10, 1)]:
-            for i in range(n):
-                self.done(kst(2026, 10, d, 9 + i))
-        x = self.daily()
-        self.assertEqual([r["count"] for r in x["days"]], [1, 2, 3, 3, 1])
-        self.assertEqual((x["total"]["sum"], x["total"]["average"], x["total"]["days"]), (10, "2.0", 5))
-        self.assertEqual(sum(x["total"]["values"]), x["total"]["sum"])       # 손으로 더한 값 = 화면 합계
-
-    def test_seoul_midnight_and_missing_days(self):
-        self.done(kst(2026, 10, 7, 0, 30))     # 서울 0시 30분 = 같은 날(10-07)로 센다
-        self.done(kst(2026, 10, 6, 23, 50))    # 앞 날짜
-        self.done(kst(2026, 10, 9, 10))        # 10-08은 기록 없음 -> 0으로 채우지 않는다
-        x = self.daily()
-        self.assertEqual([(r["date"], r["count"]) for r in x["days"]], [("2026-10-06", 1), ("2026-10-07", 1), ("2026-10-09", 1)])
-        self.assertEqual(x["total"]["days"], 3)
-
-    def test_rounding_is_half_up(self):
-        for d, n in [(6, 1), (7, 1), (8, 1), (9, 2)]:    # 합계 5 / 4일 = 1.25
-            for i in range(n):
-                self.done(kst(2026, 10, d, 9 + i))
-        self.assertEqual(self.daily()["total"]["average"], "1.3")
-
-    def test_outlier_flagged_but_counted(self):
-        for d, n in [(6, 1), (7, 1), (8, 1), (9, 10)]:
-            for i in range(n):
-                self.done(kst(2026, 10, d, 9 + i))
-        x = self.daily()
-        self.assertEqual([r["outlier"] for r in x["days"]], [False, False, False, True])
-        self.assertEqual(x["total"]["sum"], 13)
-
-    def test_week_start_is_monday(self):
-        self.done(kst(2026, 10, 7))           # 수요일
-        self.assertEqual(self.daily()["days"][0]["weekStart"], "2026-10-05")
-
-    def test_before_after_uses_same_metric_unit_rule(self):
-        for d, n in [(6, 1), (7, 2)]:
-            for i in range(n):
-                self.done(kst(2026, 10, d, 9 + i))
-        self.change_at(kst(2026, 10, 7, 23, 0))      # 2일차 뒤, 3일차 앞
-        for d, n in [(8, 3), (9, 3), (10, 1)]:
-            for i in range(n):
-                self.done(kst(2026, 10, d, 9 + i))
-        x = self.daily()
-        c = x["comparison"]
-        self.assertEqual((c["before"]["days"], c["before"]["sum"], c["before"]["average"]), (2, 3, "1.5"))
-        self.assertEqual((c["after"]["days"], c["after"]["sum"], c["after"]["average"]), (3, 7, "2.3"))
-        self.assertEqual((c["metric"], c["unit"]), (x["metric"], x["unit"]))     # 전후가 같은 지표·단위
-        self.assertEqual(c["before"]["sum"] + c["after"]["sum"], x["total"]["sum"])
-        self.assertEqual([r["side"] for r in x["days"]], ["before", "before", "after", "after", "after"])
-        ch = x["changes"][0]
-        self.assertEqual(ch["reason"], "이유")
-        self.assertTrue(ch["changedAt"])
-        self.assertEqual(ch["diff"][0]["field"], "예상 시간(시간)")
-
-    def test_change_on_morning_of_day3_counts_day3_as_after(self):
-        self.done(kst(2026, 10, 6, 10))
-        self.done(kst(2026, 10, 7, 10))
-        self.change_at(kst(2026, 10, 8, 8, 0))        # 3일차 아침, 할 일을 하기 전
-        self.done(kst(2026, 10, 8, 9))
-        self.assertEqual([r["side"] for r in self.daily()["days"]], ["before", "before", "after"])
-
-    def test_other_accounts_are_not_mixed_in(self):
-        other = User.objects.create_user("daily.other", password="Test-pw-for-unit-tests-3")
-        self.done(kst(2026, 10, 6), owner=other)
-        self.done(kst(2026, 10, 6), title="mine")
-        self.assertEqual(self.daily()["total"]["sum"], 1)
-        self.client.force_login(other)
-        self.assertEqual(self.client.get("/api/daily/?change=999999").status_code, 404)   # 남의/없는 변경 번호는 404
-        self.assertEqual(self.daily()["total"]["sum"], 1)
-
-    def test_login_required(self):
-        self.client.logout()
-        self.assertEqual(self.client.get("/api/daily/").status_code, 401)
 
 
 class ImportFromT06(TestCase):

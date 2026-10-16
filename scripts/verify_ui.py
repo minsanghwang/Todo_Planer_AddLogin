@@ -193,18 +193,6 @@ def run(page, ctx):
     page.wait_for_selector("text=예상 시간을 넉넉히 잡기")
     check("돌아보기에서 정한 고칠 점이 다음 계획으로 넘어간다", page.locator(".card:has(h3:has-text('책 읽기')) .history-item", has_text="예상 시간을 넉넉히 잡기").count() == 1)
 
-    # --- 돌아보기: 하루 완료 기록과 규칙 변경 전후 비교
-    tab(page, "돌아보기")
-    page.wait_for_selector("#dailyTable")
-    page.screenshot(path=str(SHOTS / "review-daily.png"), full_page=True)
-    dt = page.inner_text("#dailyCard")
-    check("돌아보기에 하루 완료 기록(날짜·개수·완료한 할 일)이 보인다", "1일차" in dt and "아침 러닝 5km" in dt and "합계: 1 개" in dt)
-    check("계산·처리 규칙(빠짐·중복·튐·반올림·주 시작)이 화면에 적혀 있다", all(k in dt for k in ["값이 빠졌을 때", "값이 중복될 때", "값이 유난히 튈 때", "반올림", "주 시작 요일"]))
-    rc = page.inner_text("#ruleChangeList")
-    check("계획 규칙을 바꾼 시각·이유·바뀐 내용이 보인다", "주 3회는 빡빡해서" in rc and "성공 기준: 주 3회 5km → 주 4회 5km" in rc and "202" in rc)
-    cp = page.inner_text("#compareTable")
-    check("전후 비교가 같은 지표·단위로 나온다(변경 전 0일 / 변경 후 1일)", "변경 전" in cp and "변경 후" in cp and "같은 지표" in page.inner_text(".content") and "단위(개)" in page.inner_text(".content"))
-
     # --- 새로고침 후에도 그대로
     page.reload()
     wait_loaded(page)
@@ -212,12 +200,8 @@ def run(page, ctx):
     t1 = page.inner_text("#tabContent")
     tab(page, "할 일")
     t2 = page.inner_text("#tabContent")
-    tab(page, "돌아보기")
-    page.wait_for_selector("#dailyTable")
-    t3 = page.inner_text("#tabContent")
     check("새로고침해도 계획·고칠 점·수정 전 버전이 그대로다", "운동 습관 만들기 (수정)" in t1 and "예상 시간을 넉넉히 잡기" in t1 and "(1건)" in t1)
     check("새로고침해도 할 일·완료 상태·실행 기록 수가 그대로다", "아침 러닝 5km" in t2 and "독서 30분" in t2 and "완료" in t2 and "실행 기록 보기/추가 (1건)" in t2)
-    check("새로고침해도 하루 완료 기록과 규칙 변경 기록이 그대로다", "아침 러닝 5km" in t3 and "주 3회는 빡빡해서" in t3)
     # 우선순위 순서도 유지
     tab(page, "계획")
     check("새로고침해도 드래그로 바꾼 우선순위 순서가 그대로다", order()[0].find("책 읽기") >= 0)

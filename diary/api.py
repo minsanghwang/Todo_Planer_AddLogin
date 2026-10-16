@@ -8,10 +8,8 @@
 """
 import json
 import uuid
-from datetime import date, datetime, timedelta
-from decimal import Decimal, ROUND_HALF_UP
+from datetime import date, datetime
 from functools import wraps
-from statistics import median
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth import update_session_auth_hash, logout
@@ -505,111 +503,3 @@ def record_detail(request, pk):
         return ok(ser_record(r))
     r.delete()
     return ok()
-
-
-# ------------------------------------------------------------------ 하루 완료 기록 · 계획 규칙 변경 전후 비교
-DAILY = {
-    "question": "계획 규칙을 바꾸기 전과 후에, 하루에 끝내는 할 일의 수가 달라지는가?",
-    "metric": "하루에 완료한 할 일 수",
-    "unit": "개",
-    "rules": {
-        "calc": "하루 값 = 그날(서울 시간) 완료한 할 일의 개수. 날마다의 값을 그대로 더해 합계를 내고, 합계를 값이 있는 날의 수로 나눠 평균을 낸다. 반올림은 마지막에 한 번만 한다.",
-        "missing": "완료한 할 일이 없는 날은 기록이 없는 날로 두고 0으로 채우지 않는다. 그런 날은 일수에도, 평균의 분모에도 들어가지 않는다.",
-        "duplicate": "한 할 일은 한 번만 센다. 완료로 바꿨다가 되돌린 뒤 다시 완료해도 마지막 완료 시각 기준으로 한 건만 센다.",
-        "outlier": "날마다의 값 중 중앙값보다 3배 넘게 크거나 1/3보다 작은 날은 '튀는 값'으로 표시만 한다. 계산에서 빼지 않고 그대로 포함한다.",
-        "rounding": "평균은 소수 둘째 자리에서 반올림해 소수 첫째 자리까지 보여 준다(0.05는 올림, ROUND_HALF_UP). 합계는 정수라 그대로다.",
-        "week_start": "주의 시작 요일은 월요일이다.",
-        "split": "계획을 고친 시각(규칙 변경 시각)보다 그날 첫 완료 시각이 뒤면 '변경 후', 아니면 '변경 전'으로 가른다. 전후 비교에 같은 지표·같은 단위·같은 계산 규칙을 쓴다.",
-    },
-}
-FIELD_LABELS = {
-    "title": "제목", "periodStart": "기간 시작일", "periodEnd": "기간 종료일", "successCriteria": "성공 기준",
-    "estimatedTime": "예상 시간(시간)", "topicTags": "태그",
-}
-
-
-def r1(x):
-    return Decimal(x).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
-
-
-def week_start(d):
-    return d - timedelta(days=d.weekday())
-
-
-def day_stats(counts):
-    if not counts:
-        return {"days": 0, "values": [], "sum": None, "average": None}
-    total = sum(counts)
-    return {"days": len(counts), "values": counts, "sum": total, "average": str(r1(Decimal(total) / len(counts)))}
-
-
-def show(v):
-    return ", ".join(v) if isinstance(v, list) else ("" if v is None else str(v))
-
-
-def rule_changes(user):
-    """이유를 적고 고친 계획 수정 기록 = 계획 규칙 변경 기록."""
-    versions = list(PlanVersion.objects.filter(owner=user).select_related("plan").order_by("edited_at", "id"))
-    by_plan = {}
-    for v in versions:
-        by_plan.setdefault(v.plan_id, []).append(v)
-    out = []
-    for v in versions:
-        if not v.reason:
-            continue
-        chain = by_plan[v.plan_id]
-        nxt = chain[chain.index(v) + 1] if chain.index(v) + 1 < len(chain) else None
-        after = nxt.snapshot if nxt else plan_snapshot(v.plan)
-        diff = [{"field": label, "before": show(v.snapshot.get(k)), "after": show(after.get(k))}
-                for k, label in FIELD_LABELS.items() if v.snapshot.get(k) != after.get(k)]
-        out.append({"id": str(v.id), "changedAt": iso(v.edited_at), "planTitle": after.get("title") or v.plan.title,
-                    "reason": v.reason, "diff": diff, "_at": v.edited_at})
-    return out
-
-
-def daily_payload(user, change_id=None):
-    done = Todo.objects.filter(owner=user, deleted=False, status="completed", completed_at__isnull=False).order_by("completed_at")
-    by_day = {}
-    for t in done:
-        by_day.setdefault(t.completed_at.astimezone(SEOUL).date(), []).append(t)
-    dates = sorted(by_day)
-    counts = [len(by_day[d]) for d in dates]
-    med = median(counts) if counts else None
-    changes = rule_changes(user)
-    chosen = None
-    if change_id not in (None, ""):
-        chosen = next((c for c in changes if c["id"] == str(change_id)), None)
-        if chosen is None:
-            raise NotFound()
-    elif changes:
-        chosen = changes[0]
-    rows = []
-    for i, d in enumerate(dates, 1):
-        first = min(t.completed_at for t in by_day[d])
-        side = None
-        if chosen:
-            side = "after" if first > chosen["_at"] else "before"
-        n = len(by_day[d])
-        rows.append({"dayNo": i, "date": d.isoformat(), "weekStart": week_start(d).isoformat(), "count": n,
-                     "titles": [t.title for t in by_day[d]], "side": side,
-                     "outlier": bool(med and (n > med * 3 or n < med / 3))})
-    out = {
-        "question": DAILY["question"], "metric": DAILY["metric"], "unit": DAILY["unit"], "rules": DAILY["rules"],
-        "days": rows, "total": day_stats(counts),
-        "changes": [{k: v for k, v in c.items() if k != "_at"} for c in changes],
-        "selectedChange": chosen["id"] if chosen else None, "comparison": None,
-    }
-    if chosen:
-        out["comparison"] = {
-            "metric": DAILY["metric"], "unit": DAILY["unit"], "calc": DAILY["rules"]["calc"],
-            "changedAt": chosen["changedAt"], "reason": chosen["reason"],
-            "before": day_stats([r["count"] for r in rows if r["side"] == "before"]),
-            "after": day_stats([r["count"] for r in rows if r["side"] == "after"]),
-        }
-    return out
-
-
-@require_login
-@api
-def daily_view(request):
-    return ok(daily_payload(request.user, request.GET.get("change")))

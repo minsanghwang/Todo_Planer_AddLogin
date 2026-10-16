@@ -15,7 +15,7 @@ python3 manage.py runserver      # http://127.0.0.1:8000/  → 첫 화면이 로
 ## 확인하기
 
 ```bash
-DJANGO_DEBUG=1 python3 manage.py test     # 계획 수정 이유·하루 완료 기록(전후 비교)·6번 JSON 가져오기 테스트
+DJANGO_DEBUG=1 python3 manage.py test     # 계획 수정 이유·6번 JSON 가져오기 테스트
 python3 scripts/verify_auth.py            # 임시 DB로 서버를 띄워 실제 HTTP 요청으로 인증·소유자 확인 검사 → docs/evidence.md 갱신
 python3 scripts/verify_ui.py              # 실제 브라우저(Chromium, playwright 필요)로 가입~삭제까지 클릭하며 화면 시험
 ```

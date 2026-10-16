@@ -11,7 +11,6 @@ urlpatterns = [
 
     path("api/me/", api.me_view),
     path("api/data/", api.data_view),
-    path("api/daily/", api.daily_view),
     path("api/export/", api.export_view),
     path("api/import/", api.import_view),
     path("api/account/password/", api.password_view),

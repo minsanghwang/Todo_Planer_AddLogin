@@ -173,5 +173,3 @@ table.t th{color:var(--muted);font-weight:700;font-size:11px}
 @media(max-width:640px){.metrics{grid-template-columns:repeat(2,1fr)}.grid2,.grid3{grid-template-columns:1fr}}
 .auth h1{font-size:20px;margin:18px 0 6px}
 .content{font-size:14px}
-.history-item.picked{border-left-color:var(--primary);background:var(--primary-soft)}
-details summary{cursor:pointer;list-style:none}
